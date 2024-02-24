@@ -56,13 +56,12 @@ class XGBoostDataset():
             # 読み込み
             eeg_table = pq.read_table(eeg_path, memory_map=True, columns=COLUMN_NAMES)
 
-            # start_time_point = int((eeg_table.shape[0] - 10_000) // 2)
-            # eeg_table = eeg_table[start_time_point:start_time_point+10_000]
-
-
             # 対象データの切り出し
             eeg_table = eeg_table[target_start_point:target_end_point]
-            eeg_array[index] = np.asarray(eeg_table)
+            inner_array = np.asarray(eeg_table)
+            if inner_array.shape[0]==len(COLUMN_NAMES):
+                inner_array = inner_array.T
+            eeg_array[index] = inner_array
 
             del eeg_table
 
