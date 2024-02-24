@@ -8,7 +8,7 @@ import numpy as np
 class SubmissionRunner:
 
     def __init__(self,
-                 trained_dir_list: tuple[Path],
+                 trained_dir_list: list[Path],
                  meta_df: pd.DataFrame,
                  eegs_dir: Path,
                  spectrograms_dir: Path,

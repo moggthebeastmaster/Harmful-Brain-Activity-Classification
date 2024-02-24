@@ -56,6 +56,7 @@ class SpectrogramsModel():
         self.config = config
         self.num_classes = len(TARGETS_COLUMNS)
         self.device = torch.device("cuda:0") if torch.cuda.is_available() else torch.device("cpu")
+        # self.device =  torch.device("cpu")
         self.model = None
         self.initialize_model()
 
@@ -100,20 +101,24 @@ class SpectrogramsModel():
         self.model.eval()
         self.model.to(self.device)
         predict_y = []
+        eeg_id_list = []
+        labels_list = []
         val_dataloader = data_module.val_dataloader()
         for batch in tqdm.tqdm(val_dataloader, desc="predict val dataset"):
             input_data, labels, eeg_id, offset_num = batch
             with torch.no_grad():
                 predicts_logit = self.model(input_data.to(self.device))
                 predict_y.append(torch.softmax(predicts_logit, dim=1).cpu().detach().numpy())
+                eeg_id_list.append(eeg_id.cpu().detach().numpy())
+                labels_list.append(labels.cpu().detach().numpy())
         predict_y = np.concatenate(predict_y, axis=0)
+        eeg_ids = np.concatenate(eeg_id_list)[:, np.newaxis]
+        label = np.concatenate(labels_list)
 
         # 評価
-        label = val_dataset.meta_label_prob
-        eed_id = val_dataset.meta_eeg_id[:, np.newaxis]
 
-        label_df = pd.DataFrame(np.concatenate([eed_id, label], axis=1), columns=["eeg_id"] + TARGETS_COLUMNS)
-        predicts_df = pd.DataFrame(np.concatenate([eed_id, predict_y], axis=1), columns=["eeg_id"] + TARGETS_COLUMNS)
+        label_df = pd.DataFrame(np.concatenate([eeg_ids, label], axis=1), columns=["eeg_id"] + TARGETS_COLUMNS)
+        predicts_df = pd.DataFrame(np.concatenate([eeg_ids, predict_y], axis=1), columns=["eeg_id"] + TARGETS_COLUMNS)
         score = kaggle_score(label_df.copy(), predicts_df.copy(), "eeg_id")
         score_df = pd.DataFrame([score], index=["kaggle_score"])
 
@@ -138,20 +143,25 @@ class SpectrogramsModel():
                                      shuffle=False,
                                      num_workers=0,
                                      )
-
+        harf = False
+        float_type = torch.float16 if harf else torch.float32
+        if harf:
+            self.model.half()
         self.model.eval()
         self.model.to(self.device)
         predict_y = []
+        eeg_id_list = []
         for batch in tqdm.tqdm(test_dataloader, desc="predict val dataset"):
             input_data, labels, eeg_id, offset_num = batch
             with torch.no_grad():
-                predicts_logit = self.model(input_data.to(self.device))
+                predicts_logit = self.model(input_data.to(self.device).to(float_type))
                 predict_y.append(torch.softmax(predicts_logit, dim=1).cpu().detach().numpy())
+                eeg_id_list.append(eeg_id.cpu().detach().numpy())
         predict_y = np.concatenate(predict_y, axis=0)
+        eeg_ids = np.concatenate(eeg_id_list)[:, np.newaxis]
 
         # 評価
-        eed_id = test_dataset.meta_eeg_id[:, np.newaxis]
-        predicts_df = pd.DataFrame(np.concatenate([eed_id, predict_y], axis=1), columns=["eeg_id"] + TARGETS_COLUMNS)
+        predicts_df = pd.DataFrame(np.concatenate([eeg_ids, predict_y], axis=1), columns=["eeg_id"] + TARGETS_COLUMNS)
         return predicts_df
 
     def save(self, file_path: Path):
