@@ -103,11 +103,14 @@ class EEGDataset(torch.utils.data.Dataset):
 
         # 読み込み
         eeg_table = pq.read_table(eeg_path, memory_map=True, columns=COLUMN_NAMES_ALL)
+
+        # kaggle の accellerate が GPU か　CPU で、なぜか読み込んだshape が異なる点に注意
+        x = np.asarray(eeg_table)
+        if x.shape[0] == 20:
+            x = x.T
+
         # 対象データの切り出し
-        x = eeg_table[target_start_point:target_end_point]
-
-        x = np.asarray(x)
-
+        x = x[target_start_point:target_end_point]
         # Chain をとる
         x_chain = np.zeros(shape=(x.shape[0], len(COLUMN_NAMES)))
         for k, name in enumerate(COLUMN_NAMES):

@@ -100,8 +100,14 @@ class SpectrogramsDataset(torch.utils.data.Dataset):
 
         # 読み込み
         spectrogram_table = pq.read_table(spectrogram_path, memory_map=True)
+
+        # kaggle の accellerate が GPU か　CPU で、なぜか読み込んだshape が異なる点に注意
+        x = np.asarray(spectrogram_table)
+        if x.shape[0] == 401:
+            x = x.T
+
         # 対象データの切り出し
-        x = np.asarray(spectrogram_table)[target_start_point:target_end_point, 1:]
+        x = x[target_start_point:target_end_point, 1:]
 
         mean_values = np.nanmean(x, axis=0)
         nan_indices = np.isnan(x)

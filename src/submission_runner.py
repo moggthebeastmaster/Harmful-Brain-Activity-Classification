@@ -20,6 +20,9 @@ class SubmissionRunner:
         self.spectrograms_dir = spectrograms_dir
         self.fold_num = fold_num
 
+
+
+
     def get_predicted_df(self, trained_dir: Path):
         # hparams.yaml から model_framework を読み取る
         with open(trained_dir / "hparams.yaml") as f:
@@ -61,16 +64,17 @@ class SubmissionRunner:
 
         return predicted_df
 
-    def predict_one(self, trained_dir: Path):
-        # fold 別の結果を平均する
+    def predict_one(self, trained_dir: Path, use_one_model: bool = False):
+        if use_one_model:
+            return self.get_predicted_df(trained_dir=trained_dir)
 
+        # fold 別の結果を平均する
         predicted_df_list = []
         for n in range(self.fold_num):
             fold_path = trained_dir.joinpath(f"fold_{n}")
             df = self.get_predicted_df(trained_dir=fold_path)
             predicted_df_list.append(df)
 
-
         eeg_id = predicted_df_list[0]["eeg_id"].to_numpy()[:, np.newaxis]
         targets_columns = list(predicted_df_list[0].columns[1:])
 
@@ -80,11 +84,10 @@ class SubmissionRunner:
         predicted_df = pd.DataFrame(np.concatenate([eeg_id, predict_y], axis=1), columns=["eeg_id"] + targets_columns)
         return predicted_df
 
-
-    def predict_blend(self):
+    def predict_blend(self, use_one_model: bool = False):
         predicted_df_list = []
         for trained_dir in self.trained_dir_list:
-            predicted_df_list.append(self.predict_one(trained_dir=trained_dir))
+            predicted_df_list.append(self.predict_one(trained_dir=trained_dir, use_one_model=use_one_model))
 
         eeg_id = predicted_df_list[0]["eeg_id"].to_numpy()[:, np.newaxis]
         targets_columns = list(predicted_df_list[0].columns[1:])
@@ -93,7 +96,3 @@ class SubmissionRunner:
         predict_y = values / values.sum(axis=1, keepdims=True)
         predicted_df = pd.DataFrame(np.concatenate([eeg_id, predict_y], axis=1), columns=["eeg_id"] + targets_columns)
         return predicted_df
-
-
-
-
