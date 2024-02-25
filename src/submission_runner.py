@@ -67,7 +67,8 @@ class SubmissionRunner:
         predicted_df_list = []
         for n in range(self.fold_num):
             fold_path = trained_dir.joinpath(f"fold_{n}")
-            predicted_df_list.append(self.get_predicted_df(trained_dir=fold_path))
+            df = self.get_predicted_df(trained_dir=fold_path)
+            predicted_df_list.append(df)
 
 
         eeg_id = predicted_df_list[0]["eeg_id"].to_numpy()[:, np.newaxis]

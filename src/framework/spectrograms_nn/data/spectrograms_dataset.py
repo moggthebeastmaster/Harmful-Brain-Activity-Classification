@@ -42,7 +42,8 @@ class SpectrogramsDataset(torch.utils.data.Dataset):
 
         self.meta_eeg_id = self.meta_df.eeg_id.values
         self.meta_eeg_sub_id = self.meta_df.eeg_sub_id.values if with_label else np.zeros_like(self.meta_eeg_id)
-        self.meta_eeg_label_offset_seconds = self.meta_df.eeg_label_offset_seconds.values if with_label else np.zeros_like(
+
+        self.meta_eeg_label_offset_seconds = self.meta_df.eeg_label_offset_seconds.values if "eeg_label_offset_seconds" in self.meta_df.columns else np.zeros_like(
             self.meta_eeg_id)
 
         self.meta_spectrogram_id = self.meta_df.spectrogram_id.values
@@ -56,7 +57,7 @@ class SpectrogramsDataset(torch.utils.data.Dataset):
 
         self.spectrogram = torchaudio.transforms.Spectrogram()
         self.masking1 = torchaudio.transforms.FrequencyMasking(freq_mask_param=self.config.frequency_mask_range)
-        self.masking2 = torchaudio.transforms.TimeMasking(time_mask_param =self.config.time_mask_range)
+        self.masking2 = torchaudio.transforms.TimeMasking(time_mask_param=self.config.time_mask_range)
 
         if self.with_label:
             self.meta_label = self.meta_df.expert_consensus
@@ -77,14 +78,13 @@ class SpectrogramsDataset(torch.utils.data.Dataset):
 
         # cast and to 3ch
         x = x.astype(np.float32)
-        x = np.stack([x]*3, axis=0)
-
+        x = np.stack([x] * 3, axis=0)
 
         if False:
             import matplotlib.pyplot as plt
-            plt.imshow((((x.T - x.min()) / (x.max() - x.min()))*255).astype(np.uint8), cmap='viridis', aspect='auto', origin='lower')
+            plt.imshow((((x.T - x.min()) / (x.max() - x.min())) * 255).astype(np.uint8), cmap='viridis', aspect='auto',
+                       origin='lower')
             plt.show()
-
 
         return x, y, eeg_id, self.meta_eeg_label_offset_seconds[index]
 
@@ -111,7 +111,6 @@ class SpectrogramsDataset(torch.utils.data.Dataset):
         x = np.clip(x, np.exp(-6), np.exp(10))
         x = self.normalize(np.log(x))
 
-
         # ラベル情報
         y = self.meta_label_prob[index] if self.with_label else np.zeros(shape=(len(TARGETS, )), dtype=float)
 
@@ -122,8 +121,8 @@ class SpectrogramsDataset(torch.utils.data.Dataset):
         """
         eeg_array.shape = [time, ch]
         """
-        eeg_array = (eeg_array - np.nanmean(eeg_array, axis=(0,1), keepdims=True)) / (
-                np.nanstd(eeg_array, axis=(0,1), keepdims=True) + eps)
+        eeg_array = (eeg_array - np.nanmean(eeg_array, axis=(0, 1), keepdims=True)) / (
+                np.nanstd(eeg_array, axis=(0, 1), keepdims=True) + eps)
         return np.nan_to_num(eeg_array, nan=0)
 
 

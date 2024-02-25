@@ -95,6 +95,7 @@ class SpectrogramsModel():
                           check_val_every_n_epoch=1,
                           accumulate_grad_batches=self.config.accumulate_grad_batches,
                           enable_checkpointing=False,
+                          deterministic=True,
                           )
 
         trainer.fit(self.model, datamodule=data_module)
@@ -143,6 +144,7 @@ class SpectrogramsModel():
                                      shuffle=False,
                                      num_workers=0,
                                      )
+
         harf = False
         float_type = torch.float16 if harf else torch.float32
         if harf:

@@ -33,8 +33,8 @@ class XGBoostDataset():
 
         self.meta_spectrogram_id = self.meta_df.spectrogram_id.values
         self.meta_spectrogram_sub_id = self.meta_df.spectrogram_sub_id.values if with_label else np.zeros_like(self.meta_spectrogram_id)
-        self.meta_spectrogram_label_offset_seconds = self.meta_df.spectrogram_label_offset_seconds.values if with_label else np.zeros_like(self.meta_spectrogram_id)
-
+        self.meta_eeg_label_offset_seconds = self.meta_df.eeg_label_offset_seconds.values if "eeg_label_offset_seconds" in self.meta_df.columns else np.zeros_like(
+            self.meta_eeg_id)
         self.meta_patient_id = self.meta_df.patient_id.values
 
         if self.with_label:

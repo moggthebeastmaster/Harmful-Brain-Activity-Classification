@@ -42,7 +42,7 @@ class EEGDataset(torch.utils.data.Dataset):
 
         self.meta_eeg_id = self.meta_df.eeg_id.values
         self.meta_eeg_sub_id = self.meta_df.eeg_sub_id.values if with_label else np.zeros_like(self.meta_eeg_id)
-        self.meta_eeg_label_offset_seconds = self.meta_df.eeg_label_offset_seconds.values if with_label else np.zeros_like(
+        self.meta_eeg_label_offset_seconds = self.meta_df.eeg_label_offset_seconds.values if "eeg_label_offset_seconds" in self.meta_df.columns else np.zeros_like(
             self.meta_eeg_id)
 
         self.meta_spectrogram_id = self.meta_df.spectrogram_id.values
