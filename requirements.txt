@@ -9,3 +9,4 @@ matplotlib
 xgboost
 tsfresh
 plotly
+librosa

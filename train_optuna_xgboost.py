@@ -15,22 +15,21 @@ def objective(trial:optuna.Trial):
 
     # 時間短縮用に真ん中の波形のみ使用
     meta_df = meta_df.groupby('eeg_id').agg(lambda s: s.iloc[len(s) // 2]).reset_index(drop=False)
+    # meta_df = meta_df.sample(300, random_state=0).reset_index()
 
     # モデルを用意
-    from src.framework.spectrograms_nn.model import SpectrogramsModel, EfficientNetConfig
+    from src.framework.xgboost.model import XGBoostModel, XGBoostModelConfig
 
     # config 設定
-    config = EfficientNetConfig(model_framework="eeg_efficientnet_b0",
-                                learning_rate = trial.suggest_float("learning_rate", 0.00001, 0.01, log=True),
-                                weight_decay=trial.suggest_float("weight_decay", 0.001, 0.9, log=True),
-                                frequency_mask_range=trial.suggest_int("frequency_mask_range", 1, 60),
-                                time_mask_range=trial.suggest_int("time_mask_range", 1, 150),
-                                drop_out=trial.suggest_float("drop_out", 0., 1.),
-                                mix_up_alpha = trial.suggest_float("mix_up_alpha", 0., 2.),
-                                num_worker=os.cpu_count()//2,
-                                max_epoch=10,
+    config = XGBoostModelConfig(model_framework="xgboost",
+                                n_estimators=10000,
+                                learning_rate = trial.suggest_float("learning_rate", 0.00001, 0.1, log=True),
+                                min_child_weight=trial.suggest_float("min_child_weight", 1., 10.),
+                                max_depth = trial.suggest_int("max_depth", 1, 10),
+                                subsample = trial.suggest_float("subsample",0.001, 1.),
+                                load_preprocess_data=True,
                                 )
-    model = SpectrogramsModel(config=config)
+    model = XGBoostModel(config=config)
 
     # runner を実行
     runner_config = RunnerConfig()
@@ -50,9 +49,9 @@ def objective(trial:optuna.Trial):
 
 if __name__ == '__main__':
 
-    frame_work = "spectrograms_nn"
-    model_name = "eeg_efficientnet_b0"
-    date = "20240302"
+    frame_work = "xgboost"
+    model_name = "xgboost"
+    date = "20240302_2"
 
 
     output_dir = root.joinpath("outputs", "optuna", frame_work, model_name, date)

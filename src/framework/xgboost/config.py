@@ -6,6 +6,7 @@ import yaml
 class XGBoostModelConfig:
     model_framework: str = "XGBoost"
     data_use_second: int = 50
+    load_preprocess_data:bool = False
 
     # 2024/2/17 fold0 kaggle_score = 1.0524149454152802
     n_estimators:int= 1000

@@ -30,8 +30,8 @@ class XGBoostModel():
                                             num_class=self.num_classes,
                                             early_stopping_rounds=100,
                                             verbose=100,
-                                            tree_method='hist',
-                                            device="cpu")
+                                            tree_method='gpu_hist',
+                                            device="cuda")
 
     def train(self, train_df: pd.DataFrame, val_df: pd.DataFrame, eegs_dir: Path, spectrograms_dir: Path,
               output_dir: Path):
@@ -39,8 +39,11 @@ class XGBoostModel():
 
         self.initialize_model()
 
-        train_dataset = XGBoostDataset(meta_df=train_df, eegs_dir=eegs_dir, config=self.config, with_label=True)
-        val_dataset = XGBoostDataset(meta_df=val_df, eegs_dir=eegs_dir, config=self.config, with_label=True)
+        save_load_dir_train = Path("temp_train") if self.config.load_preprocess_data else None
+        save_load_dir_val = Path("temp_val") if self.config.load_preprocess_data else None
+
+        train_dataset = XGBoostDataset(meta_df=train_df, eegs_dir=eegs_dir, config=self.config, with_label=True, save_load_dir=save_load_dir_train)
+        val_dataset = XGBoostDataset(meta_df=val_df, eegs_dir=eegs_dir, config=self.config, with_label=True, save_load_dir=save_load_dir_val)
 
         self.xgb_classifier.fit(train_dataset.x, train_dataset.y, eval_set=[(val_dataset.x, val_dataset.y)],
                                 verbose=100)

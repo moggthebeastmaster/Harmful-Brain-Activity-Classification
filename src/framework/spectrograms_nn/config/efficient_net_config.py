@@ -14,6 +14,7 @@ class EfficientNetConfig:
     learning_rate: float = 0.0015020898211300792
     weight_decay: float = 0.08641866451903213
     warmup_steps_ratio: float = 0.1
+    mix_up_alpha:float = 0.
     max_epoch: int = 10
     num_worker: int = 0
     early_stop: bool = False

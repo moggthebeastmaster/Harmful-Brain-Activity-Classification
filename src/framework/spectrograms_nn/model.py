@@ -19,10 +19,11 @@ sys.path.append(str(root))
 from src.framework.spectrograms_nn.config.efficient_net_config import EfficientNetConfig, TARGETS_COLUMNS
 from src.framework.spectrograms_nn.classifier.efficient_net import EfficientNet
 from src.framework.spectrograms_nn.data.spectrograms_dataset import SpectrogramsDataset
+from src.framework.spectrograms_nn.data.spectrograms_eeg_dataset import SpectrogramsEEGDataset
 from src.kaggle_score import kaggle_score
 
 
-class SpectogramsDataModule(LightningDataModule):
+class SpectrogramsDataModule(LightningDataModule):
     def __init__(self, train_dataset: Dataset, val_dataset: Dataset, config: EfficientNetConfig):
         super().__init__()
         self.train_dataset: Dataset = train_dataset
@@ -60,6 +61,14 @@ class SpectrogramsModel():
         self.model = None
         self.initialize_model()
 
+        if self.config.model_framework in ["efficientnet_b0"]:
+            self.dataset = SpectrogramsDataset
+        elif self.config.model_framework in ["eeg_efficientnet_b0"]:
+            self.dataset = SpectrogramsEEGDataset
+        else:
+            raise NotImplementedError
+
+
     def initialize_model(self, pretrain=False):
         self.model = _LightningModel(config=self.config, pretrain=pretrain)
         self.model.to(self.device)
@@ -79,7 +88,7 @@ class SpectrogramsModel():
                                           config=self.config,
                                           with_label=True,
                                           train_mode=False)
-        data_module = SpectogramsDataModule(train_dataset=train_dataset, val_dataset=val_dataset, config=self.config)
+        data_module = SpectrogramsDataModule(train_dataset=train_dataset, val_dataset=val_dataset, config=self.config)
 
         callbacks = [TQDMProgressBar()]
         if self.config.early_stop:
@@ -178,7 +187,7 @@ class _LightningModel(LightningModule):
         super().__init__()
 
         self.config = config
-        if self.config.model_framework in ["efficientnet_b0"]:
+        if self.config.model_framework in ["efficientnet_b0", "eeg_efficientnet_b0"]:
             self.egg_classifier = EfficientNet(self.config, pretrain=pretrain)
         else:
             raise NotImplementedError

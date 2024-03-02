@@ -144,10 +144,8 @@ class EEGNeuralNetModel():
         eeg_id_list = []
         for batch in tqdm.tqdm(test_dataloader, desc="predict val dataset"):
             input_data, labels, eeg_id, offset_num = batch
-            print(input_data)
             with torch.no_grad():
                 predicts_logit = self.model(input_data.to(self.device).to(float_type))
-                print(predicts_logit)
                 predict_y.append(torch.softmax(predicts_logit, dim=1).cpu().detach().numpy())
                 eeg_id_list.append(eeg_id.cpu().detach().numpy())
         predict_y = np.concatenate(predict_y, axis=0)
