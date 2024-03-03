@@ -20,7 +20,7 @@ def objective(trial:optuna.Trial):
     from src.framework.spectrograms_nn.model import SpectrogramsModel, EfficientNetConfig
 
     # config 設定
-    config = EfficientNetConfig(model_framework="eeg_efficientnet_b0",
+    config = EfficientNetConfig(model_framework="eeg_efficientnet_b7",
                                 learning_rate = trial.suggest_float("learning_rate", 0.00001, 0.01, log=True),
                                 weight_decay=trial.suggest_float("weight_decay", 0.001, 0.9, log=True),
                                 frequency_mask_range=trial.suggest_int("frequency_mask_range", 1, 60),
@@ -51,8 +51,8 @@ def objective(trial:optuna.Trial):
 if __name__ == '__main__':
 
     frame_work = "spectrograms_nn"
-    model_name = "eeg_efficientnet_b0"
-    date = "20240302"
+    model_name = "eeg_efficientnet_b7"
+    date = "20240303"
 
 
     output_dir = root.joinpath("outputs", "optuna", frame_work, model_name, date)

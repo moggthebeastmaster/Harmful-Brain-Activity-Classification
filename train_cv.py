@@ -9,17 +9,25 @@ if __name__ == '__main__':
     eegs_dir = root.joinpath("data/hms-harmful-brain-activity-classification/train_eegs")
     spectrograms_dir = root.joinpath("data/hms-harmful-brain-activity-classification/train_spectrograms")
     meta_df = pd.read_csv(root.joinpath("data/hms-harmful-brain-activity-classification/train.csv"))
-    output_dir = root.joinpath("outputs", "runner", "xgboost", "xgboost", "20240302")
+    output_dir = root.joinpath("outputs", "runner", "spectrograms_nn", "eeg_efficientnet_b0", "20240303")
 
     # 時間短縮用に真ん中の波形のみ使用
     meta_df = meta_df.groupby('eeg_id').agg(lambda s: s.iloc[len(s) // 2]).reset_index(drop=False)
 
     # モデルを用意
-    from src.framework.xgboost.model import XGBoostModel, XGBoostModelConfig
+    from src.framework.spectrograms_nn.model import SpectrogramsModel, EfficientNetConfig
 
-    config = XGBoostModelConfig(model_framework="xgboost",
+    config = EfficientNetConfig(model_framework="eeg_efficientnet_b0",
+                                learning_rate = 0.0007413244645269527,
+                                weight_decay=0.12167331287891033,
+                                frequency_mask_range=32,
+                                time_mask_range=85,
+                                drop_out=0.6632922771846856,
+                                mix_up_alpha = 1.4053110866116487,
+                                num_worker=os.cpu_count()//2,
+                                max_epoch=20,
                                 )
-    model = XGBoostModel(config=config)
+    model = SpectrogramsModel(config=config)
 
     # runner を実行
     runner_config = RunnerConfig()

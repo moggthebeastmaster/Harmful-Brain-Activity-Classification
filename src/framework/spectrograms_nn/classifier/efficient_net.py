@@ -20,8 +20,12 @@ class EfficientNet(nn.Module):
     def __init__(self, config:EfficientNetConfig, pretrain:bool):
         super().__init__()
         self.config = config
-        weights = torchvision.models.EfficientNet_B0_Weights.IMAGENET1K_V1 if pretrain else None
-        self.efficient_net = torchvision.models.efficientnet_b0(weights=weights)
+        if self.config.model_framework in ["efficientnet_b0", "eeg_efficientnet_b0"]:
+            weights = torchvision.models.EfficientNet_B0_Weights.IMAGENET1K_V1 if pretrain else None
+            self.efficient_net = torchvision.models.efficientnet_b0(weights=weights)
+        if self.config.model_framework in ["efficientnet_b7", "eeg_efficientnet_b7"]:
+            weights = torchvision.models.EfficientNet_B7_Weights.IMAGENET1K_V1 if pretrain else None
+            self.efficient_net = torchvision.models.efficientnet_b7(weights=weights)
 
         head = nn.Sequential(nn.Dropout(self.config.drop_out),
                              nn.Linear(self.efficient_net.classifier[1].in_features, len(TARGETS_COLUMNS),

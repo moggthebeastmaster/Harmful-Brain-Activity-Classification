@@ -61,9 +61,9 @@ class SpectrogramsModel():
         self.model = None
         self.initialize_model()
 
-        if self.config.model_framework in ["efficientnet_b0"]:
+        if self.config.model_framework in ["efficientnet_b0", "efficientnet_b7"]:
             self.dataset = SpectrogramsDataset
-        elif self.config.model_framework in ["eeg_efficientnet_b0"]:
+        elif self.config.model_framework in ["eeg_efficientnet_b0", "eeg_efficientnet_b7"]:
             self.dataset = SpectrogramsEEGDataset
         else:
             raise NotImplementedError
@@ -187,7 +187,7 @@ class _LightningModel(LightningModule):
         super().__init__()
 
         self.config = config
-        if self.config.model_framework in ["efficientnet_b0", "eeg_efficientnet_b0"]:
+        if self.config.model_framework in ["efficientnet_b0", "eeg_efficientnet_b0", "efficientnet_b7", "eeg_efficientnet_b7",]:
             self.egg_classifier = EfficientNet(self.config, pretrain=pretrain)
         else:
             raise NotImplementedError

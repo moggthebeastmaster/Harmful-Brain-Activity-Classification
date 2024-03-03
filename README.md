@@ -16,13 +16,14 @@ pip install torch==2.1.2 torchvision==0.16.2 torchaudio==2.1.2 --index-url https
 |:---------------:|:-----------------------------:|:-----------------------:|:--------:|:---------:|
 |     WaveNet     |     src.framework.eeg_nn      |          0.710          |   0.58   | 2024/2/15 |
 |     XGBoost     |     src.framework.xgboost     |          0.840          |   0.9    | 2024/2/18 |
-| efficientnet_b0 | src.framework.spectrograms_nn |          0.715          |          | 2024/2/24 |
+| efficientnet_b0 | src.framework.spectrograms_nn |          0.715          |   0.5    | 2024/2/24 |
 
 
 ### Ensemble
 
 
 
-|      models      | 5-CV Score | LB Score |  update   |
-|:----------------:|:----------:|:--------:|:---------:|
-| WaveNet, EGBoost |   0.775    |   1.02   | 2024/2/23 |
+|          models          | 5-CV Score | LB Score |  update   |
+|:------------------------:|:----------:|:--------:|:---------:|
+|     WaveNet, XGBoost     |   0.775    |   1.02   | 2024/2/23 |
+| WaveNet, efficientnet_b0 |   0.7125   |   0.45   | 2024/2/23 |
