@@ -37,7 +37,7 @@ class SubmissionRunner:
             config = EEGNeuralNetConfig(**config_dict)
             model = EEGNeuralNetModel(config=config)
             model.load(trained_dir / "model.pt")
-        elif model_framework in ["XGBoost"]:
+        elif model_framework in ["xgboost"]:
             from src.framework.xgboost.model import XGBoostModelConfig, XGBoostModel
 
             # config 設定
@@ -52,6 +52,15 @@ class SubmissionRunner:
             config = EfficientNetConfig(**config_dict)
             model = SpectrogramsModel(config=config)
             model.load(trained_dir / "model.pt")
+
+        elif model_framework in ["eeg_efficientnet_b0"]:
+            from src.framework.spectrograms_nn.model import SpectrogramsModel, EfficientNetConfig
+
+            # config 設定
+            config = EfficientNetConfig(**config_dict)
+            model = SpectrogramsModel(config=config)
+            model.load(trained_dir / "model.pt")
+
 
         else:
             raise NotImplementedError

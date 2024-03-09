@@ -68,7 +68,6 @@ class SpectrogramsModel():
         else:
             raise NotImplementedError
 
-
     def initialize_model(self, pretrain=False):
         self.model = _LightningModel(config=self.config, pretrain=pretrain)
         self.model.to(self.device)
@@ -143,11 +142,20 @@ class SpectrogramsModel():
         return {"kaggle_score": score}
 
     def predict(self, test_df: pd.DataFrame, eegs_dir: Path, spectrograms_dir: Path) -> pd.DataFrame:
-        test_dataset = SpectrogramsDataset(meta_df=test_df,
-                                           spectrograms_dir=spectrograms_dir,
-                                           config=self.config,
-                                           with_label=False,
-                                           train_mode=False)
+        if self.config.model_framework in ["efficientnet_b0", "efficientnet_b7"]:
+            test_dataset = SpectrogramsDataset(meta_df=test_df,
+                                               spectrograms_dir=spectrograms_dir,
+                                               config=self.config,
+                                               with_label=False,
+                                               train_mode=False)
+        elif self.config.model_framework in ["eeg_efficientnet_b0", "eeg_efficientnet_b7"]:
+            test_dataset = SpectrogramsEEGDataset(meta_df=test_df,
+                                                  eegs_dir=eegs_dir,
+                                                  spectrograms_dir=spectrograms_dir,
+                                                  config=self.config,
+                                                  with_label=False,
+                                                  train_mode=False)
+
         test_dataloader = DataLoader(test_dataset,
                                      batch_size=self.config.batch_size,
                                      shuffle=False,
@@ -187,7 +195,8 @@ class _LightningModel(LightningModule):
         super().__init__()
 
         self.config = config
-        if self.config.model_framework in ["efficientnet_b0", "eeg_efficientnet_b0", "efficientnet_b7", "eeg_efficientnet_b7",]:
+        if self.config.model_framework in ["efficientnet_b0", "eeg_efficientnet_b0", "efficientnet_b7",
+                                           "eeg_efficientnet_b7", ]:
             self.egg_classifier = EfficientNet(self.config, pretrain=pretrain)
         else:
             raise NotImplementedError

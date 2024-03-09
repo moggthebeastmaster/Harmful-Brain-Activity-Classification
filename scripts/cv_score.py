@@ -4,7 +4,7 @@ import numpy as np
 
 
 root_dir = Path(__file__).parents[1]
-result_dir = root_dir.joinpath("outputs/runner/spectrograms_nn/eeg_efficientnet_b0/20240226")
+result_dir = root_dir.joinpath("outputs/runner/xgboost/xgboost/20240302")
 
 
 pred_list = []
