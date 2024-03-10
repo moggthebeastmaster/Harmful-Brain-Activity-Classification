@@ -9,26 +9,21 @@ if __name__ == '__main__':
     eegs_dir = root.joinpath("data/hms-harmful-brain-activity-classification/train_eegs")
     spectrograms_dir = root.joinpath("data/hms-harmful-brain-activity-classification/train_spectrograms")
     meta_df = pd.read_csv(root.joinpath("data/hms-harmful-brain-activity-classification/train.csv"))
-    output_dir = root.joinpath("outputs", "runner", "spectrograms_nn", "eeg_efficientnet_b0", "20240303_early")
+    output_dir = root.joinpath("outputs", "runner", "eeg_nn", "resnet_gru", "20240310")
 
     # 時間短縮用に真ん中の波形のみ使用
     meta_df = meta_df.groupby('eeg_id').agg(lambda s: s.iloc[len(s) // 2]).reset_index(drop=False)
 
     # モデルを用意
-    from src.framework.spectrograms_nn.model import SpectrogramsModel, EfficientNetConfig
+    from src.framework.eeg_nn.model import EEGNeuralNetModel, EEGResnetGRUConfig
 
-    config = EfficientNetConfig(model_framework="eeg_efficientnet_b0",
-                                learning_rate = 0.0007413244645269527,
-                                weight_decay=0.12167331287891033,
-                                frequency_mask_range=32,
-                                time_mask_range=85,
-                                drop_out=0.6632922771846856,
-                                mix_up_alpha = 1.4053110866116487,
+    config = EEGResnetGRUConfig(model_framework="ResnetGRU",
+                                batch_size=2**4,
                                 num_worker=os.cpu_count()//2,
                                 max_epoch=20,
-                                early_stop=True,
+                                early_stop=False,
                                 )
-    model = SpectrogramsModel(config=config)
+    model = EEGNeuralNetModel(config=config)
 
     # runner を実行
     runner_config = RunnerConfig()

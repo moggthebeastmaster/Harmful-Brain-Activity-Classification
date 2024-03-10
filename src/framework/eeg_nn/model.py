@@ -16,11 +16,9 @@ from pytorch_lightning.loggers import CSVLogger
 root = Path(__file__).parents[1]
 sys.path.append(str(root))
 
-from src.framework.eeg_nn.config import EEGNeuralNetConfig
-from src.framework.eeg_nn.classifier.eeg_net import EEGNet
-from src.framework.eeg_nn.classifier.eeg_transformer import EEGTransformer
+from src.framework.eeg_nn.config import EEGNeuralNetConfig, EEGResnetGRUConfig
+from src.framework.eeg_nn.classifier.resnet_gru import ResnetGRU
 from src.framework.eeg_nn.classifier.wave_net import WaveNet
-from src.framework.eeg_nn.data.eeg_dataset import TARGETS_COLUMNS, FREQUENCY, EEGDataset, COLUMN_NAMES
 from src.kaggle_score import kaggle_score
 
 
@@ -56,7 +54,17 @@ class EEGDataModule(LightningDataModule):
 class EEGNeuralNetModel():
     def __init__(self, config: EEGNeuralNetConfig):
         self.config = config
-        self.num_classes = len(TARGETS_COLUMNS)
+
+        if self.config.model_framework == "WaveNet":
+            from src.framework.eeg_nn.data.eeg_dataset import TARGETS_COLUMNS, FREQUENCY, EEGDataset, COLUMN_NAMES
+            self.dataset_class = EEGDataset
+            self.target_columns = TARGETS_COLUMNS
+        elif self.config.model_framework == "ResnetGRU":
+            from src.framework.eeg_nn.data.eeg_resnetgru_dataset import TARGETS_COLUMNS, FREQUENCY, EEGResnetGRUDataset, COLUMN_NAMES
+            self.dataset_class = EEGResnetGRUDataset
+            self.target_columns = TARGETS_COLUMNS
+
+        self.num_classes = len(self.target_columns)
         self.device = torch.device("cuda:0") if torch.cuda.is_available() else torch.device("cpu")
         self.model = None
         self.initialize_model()
@@ -70,9 +78,9 @@ class EEGNeuralNetModel():
 
         self.initialize_model()
 
-        train_dataset = EEGDataset(meta_df=train_df, eegs_dir=eegs_dir, config=self.config, with_label=True,
+        train_dataset = self.dataset_class(meta_df=train_df, eegs_dir=eegs_dir, config=self.config, with_label=True,
                                    train_mode=True)
-        val_dataset = EEGDataset(meta_df=val_df, eegs_dir=eegs_dir, config=self.config, with_label=True,
+        val_dataset = self.dataset_class(meta_df=val_df, eegs_dir=eegs_dir, config=self.config, with_label=True,
                                  train_mode=False)
         data_module = EEGDataModule(train_dataset=train_dataset, val_dataset=val_dataset, config=self.config)
 
@@ -110,8 +118,8 @@ class EEGNeuralNetModel():
         eeg_ids = np.concatenate(eeg_id_list)[:, np.newaxis]
         label = np.concatenate(labels_list)
 
-        label_df = pd.DataFrame(np.concatenate([eeg_ids, label], axis=1), columns=["eeg_id"] + TARGETS_COLUMNS)
-        predicts_df = pd.DataFrame(np.concatenate([eeg_ids, predict_y], axis=1), columns=["eeg_id"] + TARGETS_COLUMNS)
+        label_df = pd.DataFrame(np.concatenate([eeg_ids, label], axis=1), columns=["eeg_id"] + self.target_columns)
+        predicts_df = pd.DataFrame(np.concatenate([eeg_ids, predict_y], axis=1), columns=["eeg_id"] + self.target_columns)
         score = kaggle_score(label_df.copy(), predicts_df.copy(), "eeg_id")
         score_df = pd.DataFrame([score], index=["kaggle_score"])
 
@@ -126,7 +134,7 @@ class EEGNeuralNetModel():
         return {"kaggle_score": score}
 
     def predict(self, test_df: pd.DataFrame, eegs_dir: Path, spectrograms_dir: Path) -> pd.DataFrame:
-        test_dataset = EEGDataset(meta_df=test_df, eegs_dir=eegs_dir, config=self.config, with_label=False,
+        test_dataset = self.dataset_class(meta_df=test_df, eegs_dir=eegs_dir, config=self.config, with_label=False,
                                   train_mode=False)
         test_dataloader = DataLoader(test_dataset,
                                      batch_size=self.config.batch_size,
@@ -152,7 +160,7 @@ class EEGNeuralNetModel():
         eeg_ids = np.concatenate(eeg_id_list)[:, np.newaxis]
 
         # 評価
-        predicts_df = pd.DataFrame(np.concatenate([eeg_ids, predict_y], axis=1), columns=["eeg_id"] + TARGETS_COLUMNS)
+        predicts_df = pd.DataFrame(np.concatenate([eeg_ids, predict_y], axis=1), columns=["eeg_id"] + self.target_columns)
 
         return predicts_df
 
@@ -167,15 +175,17 @@ class LightningModel(LightningModule):
     def __init__(self, config: EEGNeuralNetConfig):
         super().__init__()
 
+
         self.config = config
-        if self.config.model_framework == "EEGNet":
-            self.egg_classifier = EEGNet(chunk_size=int(self.config.data_use_second * FREQUENCY),
-                                         num_electrodes=len(COLUMN_NAMES))
-        elif self.config.model_framework == "EEGTransformer":
-            self.egg_classifier = EEGTransformer()
+        if self.config.model_framework == "ResnetGRU":
+            from src.framework.eeg_nn.data.eeg_resnetgru_dataset import TARGETS_COLUMNS, COLUMN_NAMES
+            self.egg_classifier = ResnetGRU(drop_out=self.config.drop_out)
+            self.target_columns = TARGETS_COLUMNS
         elif self.config.model_framework == "WaveNet":
+            from src.framework.eeg_nn.data.eeg_dataset import TARGETS_COLUMNS,  COLUMN_NAMES
             self.egg_classifier = WaveNet(num_electrodes=len(COLUMN_NAMES), num_base_channels=config.num_base_channels,
                                           drop_out=config.drop_out)
+            self.target_columns = TARGETS_COLUMNS
 
         self.kl_loss_function = KLDivLossWithLogits()
 
@@ -195,8 +205,8 @@ class LightningModel(LightningModule):
         return kl_loss
 
     def training_step(self, batch, batch_idx):
-        images, labels, _, _ = batch
-        predicts_logit = self(images)
+        input_data, labels, _, _ = batch
+        predicts_logit = self(input_data)
         loss = self._loss_func(predicts_logit, labels)
         loss = loss.mean()
         self.log("train_loss", loss, prog_bar=True, logger=True, on_step=False, on_epoch=True)
@@ -226,8 +236,8 @@ class LightningModel(LightningModule):
         eeg_ids = np.concatenate(self.validation_step_eeg_ids, axis=0)[:, np.newaxis]
         labels = np.concatenate(self.validation_step_labels, axis=0)
         predicts = np.concatenate(self.validation_step_predicts, axis=0)
-        label_df = pd.DataFrame(np.concatenate([eeg_ids, labels], axis=1), columns=["eeg_id"] + TARGETS_COLUMNS)
-        predicts_df = pd.DataFrame(np.concatenate([eeg_ids, predicts], axis=1), columns=["eeg_id"] + TARGETS_COLUMNS)
+        label_df = pd.DataFrame(np.concatenate([eeg_ids, labels], axis=1), columns=["eeg_id"] + self.target_columns)
+        predicts_df = pd.DataFrame(np.concatenate([eeg_ids, predicts], axis=1), columns=["eeg_id"] + self.target_columns)
         score = kaggle_score(label_df, predicts_df, row_id_column_name="eeg_id")
         self.log("val_score", score, prog_bar=False, logger=True, on_step=False, on_epoch=True)
 

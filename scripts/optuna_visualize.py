@@ -6,8 +6,8 @@ root = Path(__file__).parents[1]
 
 if __name__ == '__main__':
     frame_work = "spectrograms_nn"
-    model_name = "eeg_efficientnet_b0"
-    date = "20240302"
+    model_name = "eeg_efficientnet_b7"
+    date = "20240303"
     output_dir = root.joinpath("outputs", "optuna", frame_work, model_name, date)
 
 
