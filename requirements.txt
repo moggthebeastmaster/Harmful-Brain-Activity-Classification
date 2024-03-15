@@ -10,3 +10,4 @@ xgboost
 tsfresh
 plotly
 librosa
+PyWavelets

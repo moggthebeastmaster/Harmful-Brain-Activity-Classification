@@ -5,9 +5,9 @@ import optuna
 root = Path(__file__).parents[1]
 
 if __name__ == '__main__':
-    frame_work = "spectrograms_nn"
-    model_name = "eeg_efficientnet_b7"
-    date = "20240303"
+    frame_work = "eeg_nn"
+    model_name = "ResnetGRU"
+    date = "20240310"
     output_dir = root.joinpath("outputs", "optuna", frame_work, model_name, date)
 
 

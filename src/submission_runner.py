@@ -61,9 +61,25 @@ class SubmissionRunner:
             model = SpectrogramsModel(config=config)
             model.load(trained_dir / "model.pt")
 
+        elif model_framework in ['External01Model']:
+            from src.framework.external_01.model import External01Model
+            from src.framework.external_01.config import External01Config
+            # config 設定
+            config = External01Config(**config_dict)
+            model = External01Model(config=config)
+            model.load(trained_dir / "model.ckpt")
+
+        elif model_framework in ['ResnetGRU']:
+            from src.framework.eeg_nn.model import EEGNeuralNetModel
+            from src.framework.eeg_nn.config import EEGResnetGRUConfig
+            # config 設定
+            config = EEGResnetGRUConfig(**config_dict)
+            model = EEGNeuralNetModel(config=config)
+            model.load(trained_dir / "model.pt")
+
 
         else:
-            raise NotImplementedError
+            raise NotImplementedError(model_framework)
 
         # 予測
         predicted_df = model.predict(test_df=self.meta_df,
