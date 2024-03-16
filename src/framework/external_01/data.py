@@ -32,9 +32,9 @@ class External01Dataset(Dataset):
         assert not train_mode
 
         # READ ALL EEG SPECTROGRAMS
-        self.eeg_indexes = meta_df.eeg_id.unique()
+        eeg_indexes = meta_df.eeg_id.unique()
         eeg_specs = {}
-        for eeg_id in self.eeg_indexes:
+        for eeg_id in eeg_indexes:
             # CREATE SPECTROGRAM FROM EEG PARQUET
             img = spectrogram_from_eeg(eegs_dir / f"{eeg_id}.parquet")
             eeg_specs[eeg_id] = img
@@ -54,6 +54,8 @@ class External01Dataset(Dataset):
                                       eeg_specs=eeg_specs,
                                       specs=specs
                                       )
+
+        self.eeg_indexes = meta_df.eeg_id
 
 
     def __len__(self):

@@ -11,3 +11,4 @@ tsfresh
 plotly
 librosa
 PyWavelets
+timm

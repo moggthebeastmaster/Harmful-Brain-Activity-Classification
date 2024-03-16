@@ -1,8 +1,8 @@
 from pathlib import Path
 import pandas as pd
-import sys
 from yaml import safe_load
 import numpy as np
+import tqdm
 
 
 class SubmissionRunner:
@@ -61,14 +61,6 @@ class SubmissionRunner:
             model = SpectrogramsModel(config=config)
             model.load(trained_dir / "model.pt")
 
-        elif model_framework in ['External01Model']:
-            from src.framework.external_01.model import External01Model
-            from src.framework.external_01.config import External01Config
-            # config 設定
-            config = External01Config(**config_dict)
-            model = External01Model(config=config)
-            model.load(trained_dir / "model.ckpt")
-
         elif model_framework in ['ResnetGRU']:
             from src.framework.eeg_nn.model import EEGNeuralNetModel
             from src.framework.eeg_nn.config import EEGResnetGRUConfig
@@ -77,7 +69,36 @@ class SubmissionRunner:
             model = EEGNeuralNetModel(config=config)
             model.load(trained_dir / "model.pt")
 
+        elif model_framework in ['External01Model']:
+            from src.framework.external_01.model import External01Model
+            from src.framework.external_01.config import External01Config
+            # config 設定
+            config = External01Config(**config_dict)
+            model = External01Model(config=config)
+            model.load(trained_dir / "model.ckpt")
 
+        elif model_framework in ['External02Model']:
+            from src.framework.external_02.model import External02Model
+            from src.framework.external_02.config import External02Config
+            # config 設定
+            config = External02Config(**config_dict)
+            model = External02Model(config=config)
+            model.load(trained_dir / "model.pth")
+        elif model_framework in ['External03Model']:
+            from src.framework.external_03.model import External03Model
+            from src.framework.external_03.config import External03Config
+            # config 設定
+            config = External03Config(**config_dict)
+            model = External03Model(config=config)
+            model.load(trained_dir / "model")
+
+        elif model_framework in ['External04Model']:
+            from src.framework.external_04.model import External04Model
+            from src.framework.external_04.config import External04Config
+            # config 設定
+            config = External04Config(**config_dict)
+            model = External04Model(config=config)
+            model.load(trained_dir / "model.pth")
         else:
             raise NotImplementedError(model_framework)
 
@@ -87,6 +108,7 @@ class SubmissionRunner:
                                      spectrograms_dir=self.spectrograms_dir,
                                      )
 
+        del model
         return predicted_df
 
     def predict_one(self, trained_dir: Path, use_one_model: bool = False):
@@ -111,8 +133,10 @@ class SubmissionRunner:
 
     def predict_blend(self, use_one_model: bool = False):
         predicted_df_list = []
-        for trained_dir in self.trained_dir_list:
-            predicted_df_list.append(self.predict_one(trained_dir=trained_dir, use_one_model=use_one_model))
+        with tqdm.tqdm(self.trained_dir_list) as pbar:
+            for trained_dir in pbar:
+                pbar.set_description(f"predict_model:{trained_dir}")
+                predicted_df_list.append(self.predict_one(trained_dir=trained_dir, use_one_model=use_one_model))
 
         eeg_id = predicted_df_list[0]["eeg_id"].to_numpy()[:, np.newaxis]
         targets_columns = list(predicted_df_list[0].columns[1:])

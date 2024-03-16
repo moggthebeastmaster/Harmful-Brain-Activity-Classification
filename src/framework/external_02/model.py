@@ -1,3 +1,5 @@
+import os
+
 import pytorch_lightning as pl
 from torchvision.models import efficientnet_b0
 import torch
@@ -5,22 +7,24 @@ from torch import nn
 import pandas as pd
 from pathlib import Path
 import numpy as np
-import os
-from .config import External01Config
-from .data import External01Dataset, TARGETS
 
-class External01Model:
+from .config import External02Config
+from .data import External02Dataset, TARGETS
+
+import warnings
+warnings.filterwarnings('ignore')
+class External02Model:
     """
     https://www.kaggle.com/code/hideyukizushi/hms-blend-all-torch-publicmodel-simpleblend-lb-32
-    Model1 のラップクラス
+    Model2 のラップクラス
     """
-    def __init__(self, config:External01Config):
+    def __init__(self, config:External02Config):
         self.config = config
-        self.model = EEGEffnetB0()
+        self.model = None
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
     def initialize_model(self):
-        self.model = EEGEffnetB0()
+        self.model = None
 
 
     def train(self,
@@ -37,12 +41,12 @@ class External01Model:
                 spectrograms_dir: Path) -> pd.DataFrame:
 
         self.model.to(self.device).eval()
-        dataset = External01Dataset(test_df,
+        dataset = External02Dataset(test_df,
                                     eegs_dir=eegs_dir,
                                     spectrograms_dir=spectrograms_dir,
                                     config=self.config,
                                     )
-        test_loader = torch.utils.data.DataLoader(dataset, shuffle=False, batch_size=64, num_workers=os.cpu_count()//2)
+        test_loader = torch.utils.data.DataLoader(dataset, shuffle=False, batch_size=16, num_workers=os.cpu_count()//2)
         predict_y = []
         eeg_id_list = []
         with torch.inference_mode():
@@ -63,27 +67,4 @@ class External01Model:
 
 
     def load(self, file_path: Path):
-        self.model = EEGEffnetB0.load_from_checkpoint(file_path)
-
-
-
-class EEGEffnetB0(pl.LightningModule):
-
-    def __init__(self):
-        super().__init__()
-        self.base_model = efficientnet_b0()
-        self.base_model.classifier[1] = nn.Linear(self.base_model.classifier[1].in_features, 6, dtype=torch.float32)
-        self.prob_out = nn.Softmax()
-
-    def forward(self, x):
-        x1 = [x[:, :, :, i:i + 1] for i in range(4)]
-        x1 = torch.concat(x1, dim=1)
-        x2 = [x[:, :, :, i + 4:i + 5] for i in range(4)]
-        x2 = torch.concat(x2, dim=1)
-
-        x = torch.concat([x1, x2], dim=2)
-        x = torch.concat([x, x, x], dim=3)
-        x = x.permute(0, 3, 1, 2)
-
-        out = self.base_model(x)
-        return out
+        self.model = torch.load(file_path)

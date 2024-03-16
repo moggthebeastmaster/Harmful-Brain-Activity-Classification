@@ -1,3 +1,5 @@
+import os
+
 import pandas as pd
 from torch.utils.data import Dataset, DataLoader
 from pytorch_lightning import LightningDataModule, LightningModule, Trainer
@@ -159,7 +161,7 @@ class SpectrogramsModel():
         test_dataloader = DataLoader(test_dataset,
                                      batch_size=self.config.batch_size,
                                      shuffle=False,
-                                     num_workers=0,
+                                     num_workers=os.cpu_count()//2,
                                      )
 
         harf = False

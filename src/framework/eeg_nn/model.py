@@ -9,6 +9,7 @@ import sys
 import numpy as np
 import tqdm
 import shutil
+import os
 
 from pytorch_lightning.callbacks import TQDMProgressBar, EarlyStopping
 from pytorch_lightning.loggers import CSVLogger
@@ -139,7 +140,7 @@ class EEGNeuralNetModel():
         test_dataloader = DataLoader(test_dataset,
                                      batch_size=self.config.batch_size,
                                      shuffle=False,
-                                     num_workers=0,
+                                     num_workers=os.cpu_count()//2,
                                      )
 
         harf = False
