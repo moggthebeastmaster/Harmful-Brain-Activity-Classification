@@ -71,7 +71,7 @@ class EEGNeuralNetModel():
         self.initialize_model()
 
     def initialize_model(self):
-        self.model = LightningModel(config=self.config)
+        self.model = LightningModel(config=self.config, device=self.device)
         self.model.to(self.device)
 
     def train(self, train_df: pd.DataFrame, val_df: pd.DataFrame, eegs_dir: Path, spectrograms_dir: Path,
@@ -173,7 +173,7 @@ class EEGNeuralNetModel():
 
 
 class LightningModel(LightningModule):
-    def __init__(self, config: EEGNeuralNetConfig):
+    def __init__(self, config: EEGNeuralNetConfig, device):
         super().__init__()
 
 
@@ -188,7 +188,8 @@ class LightningModel(LightningModule):
                                           drop_out=config.drop_out)
             self.target_columns = TARGETS_COLUMNS
 
-        self.kl_loss_function = KLDivLossWithLogits()
+        self.kl_loss_function = KLDivLossWithLogits(device=device, weight_sample=None)
+        # self.kl_loss_function = KLDivLossWithLogits(device=device, weight_sample=np.array([0.12553818, 0.1551474, 0.21220127, 0.27715933, 0.18644061, 0.04351321]))
 
         self.save_hyperparameters(dataclasses.asdict(config))
 
@@ -266,18 +267,26 @@ class KLDivLossWithLogits(torch.nn.KLDivLoss):
 
     """
 
-    def __init__(self):
-        super().__init__(reduction='batchmean')
+    def __init__(self, device, weight_sample=None):
+        if weight_sample is None:
+            super().__init__(reduction='batchmean')
+        else:
+            self.weight_sample = torch.Tensor(weight_sample).to(device)
+            super().__init__(reduction="none")
 
     def forward(self, y, t):
         pred = torch.nn.functional.log_softmax(y, dim=1)
         loss = super().forward(pred, t)
-        return loss
+
+        if self.weight_sample is None:
+            return loss
+        else:
+            return (loss * self.weight_sample).sum() / y.size(0)
 
 
 if __name__ == '__main__':
     #
-    loss = KLDivLossWithLogits()
+    loss = KLDivLossWithLogits(device="cpu")
     label = torch.Tensor([[0., 1., 0], [1., 0., 0], [1., 0, 0.], [0., 0.5, 0.5]])
     target = torch.Tensor([[0.1, 0.9, 0., ], [0.9, 0., 0.1], [0.8, 0., 0.2], [0., 0.5, 0.5]])
 

@@ -3,7 +3,7 @@ import pandas as pd
 from yaml import safe_load
 import numpy as np
 import tqdm
-
+from xgboost import XGBRegressor
 
 class SubmissionRunner:
 
@@ -19,9 +19,6 @@ class SubmissionRunner:
         self.eegs_dir = eegs_dir
         self.spectrograms_dir = spectrograms_dir
         self.fold_num = fold_num
-
-
-
 
     def get_predicted_df(self, trained_dir: Path):
         # hparams.yaml から model_framework を読み取る
@@ -131,12 +128,113 @@ class SubmissionRunner:
         predicted_df = pd.DataFrame(np.concatenate([eeg_id, predict_y], axis=1), columns=["eeg_id"] + targets_columns)
         return predicted_df
 
-    def predict_blend(self, use_one_model: bool = False):
+
+    def predict_blend(self):
         predicted_df_list = []
         with tqdm.tqdm(self.trained_dir_list) as pbar:
             for trained_dir in pbar:
                 pbar.set_description(f"predict_model:{trained_dir}")
-                predicted_df_list.append(self.predict_one(trained_dir=trained_dir, use_one_model=use_one_model))
+                predicted_df_list.append(self.predict_one(trained_dir=trained_dir, use_one_model=False))
+
+        eeg_id = predicted_df_list[0]["eeg_id"].to_numpy()[:, np.newaxis]
+        targets_columns = list(predicted_df_list[0].columns[1:])
+        values = [predicted_df.iloc[:, 1:].to_numpy() for predicted_df in predicted_df_list]
+        values = np.sum(np.stack(values), axis=0)
+        predict_y = values / values.sum(axis=1, keepdims=True)
+        predicted_df = pd.DataFrame(np.concatenate([eeg_id, predict_y], axis=1), columns=["eeg_id"] + targets_columns)
+        return predicted_df
+
+    def predict_ensemble(self, method="linear"):
+
+        predicted_df_list = []
+        model_framework_list = []
+        with tqdm.tqdm(self.trained_dir_list) as pbar:
+            for trained_dir in pbar:
+                pbar.set_description(f"predict_model:{trained_dir}")
+                predicted_df_list.append(self.predict_one(trained_dir=trained_dir))
+                with open(trained_dir / "fold_0" / "hparams.yaml") as f:
+                    config_dict = safe_load(f)
+                    model_framework = config_dict["model_framework"]
+                    model_framework_list.append(model_framework)
+
+        # ensemble model を作る
+        external_df_list = []
+        train_x_df = None
+        train_y_df = None
+        test_x_df = None
+
+        for index in range(len(model_framework_list)):
+            model_framework = model_framework_list[index]
+            if model_framework.startswith("External"):
+                external_df_list.append(predicted_df_list[index])
+            else:
+                fold_pred_df = pd.concat([pd.read_csv(self.trained_dir_list[index]/f"fold_{n}"/"predicts.csv", index_col=0) for n in range(self.fold_num)])
+                fold_label_df = pd.concat([pd.read_csv(self.trained_dir_list[index]/f"fold_{n}"/"label.csv", index_col=0) for n in range(self.fold_num)])
+                fold_pred_df = fold_pred_df.astype({"eeg_id":int}).reset_index(drop=True)
+                fold_label_df = fold_label_df.astype({"eeg_id":int}).reset_index(drop=True)
+                if train_x_df is None:
+                    train_x_df = fold_pred_df
+                    train_y_df = fold_label_df
+                else:
+                    train_x_df = train_x_df.join(fold_pred_df.drop("eeg_id", axis=1), how='inner', rsuffix='_right')
+
+                test_x = predicted_df_list[index].astype({"eeg_id":int}).reset_index(drop=True)
+                if test_x_df is None:
+                    test_x_df = test_x
+                else:
+                    test_x_df = test_x_df.join(test_x.drop("eeg_id", axis=1),how='inner', rsuffix='_right')
+
+        eeg_id = predicted_df_list[0]["eeg_id"].to_numpy()[:, np.newaxis]
+        targets_columns = list(predicted_df_list[0].columns[1:])
+
+        if train_x_df is not None:
+            from sklearn.multioutput import RegressorChain
+            from sklearn.linear_model import LinearRegression
+            base_estimater = LinearRegression()
+            chain = RegressorChain(base_estimator=base_estimater, random_state=0)
+            x = train_x_df.values[:, 1:]
+            y = train_y_df.values[:, 1:]
+            chain.fit(x,y)
+
+            pred = chain.predict(test_x_df.values[:, 1:])
+            pred = np.clip(pred, 0., 1.,)
+            predict_y = pred / pred.sum(axis=1, keepdims=True)
+
+            our_predicted_df = pd.DataFrame(np.concatenate([eeg_id, predict_y], axis=1), columns=["eeg_id"] + targets_columns)
+        else:
+            our_predicted_df = None
+
+        # external グループ内で平均をとる
+        if len(external_df_list)>0:
+            values = [ex_predicted_df.iloc[:, 1:].to_numpy() for ex_predicted_df in external_df_list]
+            values = np.sum(np.stack(values), axis=0)
+            predict_y = values / values.sum(axis=1, keepdims=True)
+            ex_predicted_df = pd.DataFrame(np.concatenate([eeg_id, predict_y], axis=1), columns=["eeg_id"] + targets_columns)
+        else:
+            ex_predicted_df = None
+
+        # 二つの平均をとる
+        if our_predicted_df is None:
+            predicted_df = ex_predicted_df
+        elif ex_predicted_df is None:
+            predicted_df = our_predicted_df
+        else:
+            values = np.sum(np.stack([our_predicted_df.iloc[:, 1:].to_numpy(), ex_predicted_df.iloc[:, 1:].to_numpy()]), axis=0)
+            predict_y = values / values.sum(axis=1, keepdims=True)
+            predicted_df = pd.DataFrame(np.concatenate([eeg_id, predict_y], axis=1), columns=["eeg_id"] + targets_columns)
+
+        return predicted_df
+
+
+
+
+
+
+
+
+
+
+
 
         eeg_id = predicted_df_list[0]["eeg_id"].to_numpy()[:, np.newaxis]
         targets_columns = list(predicted_df_list[0].columns[1:])

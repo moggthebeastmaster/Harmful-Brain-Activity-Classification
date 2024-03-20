@@ -1,18 +1,20 @@
 from pathlib import Path
 import pandas as pd
 import optuna
+import sqlite3
 
 root = Path(__file__).parents[1]
 
 if __name__ == '__main__':
     frame_work = "eeg_nn"
-    model_name = "ResnetGRU"
-    date = "20240310"
+    model_name = "resnet_gru"
+    date = "20240317"
     output_dir = root.joinpath("outputs", "optuna", frame_work, model_name, date)
 
 
     db_path = r"C:\work\HMS\optuna_results.db"
-    db_path = r"C:\Users\kenap\OneDrive\デスクトップ\optuna_results.db"
+    # db_path = r"C:\Users\kenap\OneDrive\デスクトップ\optuna_results.db"
+
 
     study_name = '-'.join([frame_work, model_name, date])
     storage = f'sqlite:///{db_path}'

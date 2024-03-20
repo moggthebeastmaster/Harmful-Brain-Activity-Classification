@@ -198,7 +198,8 @@ class SpectrogramsEEGDataset(torch.utils.data.Dataset):
         nan_indices = np.isnan(x_chain)
         x_chain[nan_indices] = np.take(mean_values, nan_indices.nonzero()[1])
 
-        x_eeg_spectrograms = self.normalize(x_chain, axis=(0,1))
+        x_eeg_spectrograms = x_chain.copy()
+        x_eeg_spectrograms = self.normalize(x_eeg_spectrograms, axis=(0,1))
         x_eeg_spectrograms = np.stack([x_eeg_spectrograms[..., i] for i in range(4)], axis=0)
         x_eeg_spectrograms = Image.fromarray(np.concatenate([s for s in x_eeg_spectrograms], axis=0))
         x_eeg_spectrograms = np.asarray(x_eeg_spectrograms.resize((300, 400))).T
@@ -216,7 +217,8 @@ class SpectrogramsEEGDataset(torch.utils.data.Dataset):
         nan_indices = np.isnan(x_chain)
         x_chain[nan_indices] = np.take(mean_values, nan_indices.nonzero()[1])
 
-        x_eeg_spectrograms_stft = self.normalize(x_chain, axis=(0,1))
+        x_eeg_spectrograms_stft = x_chain.copy()
+        # x_eeg_spectrograms_stft = self.normalize(x_eeg_spectrograms_stft, axis=(0,1))
         x_eeg_spectrograms_stft = np.stack([x_eeg_spectrograms_stft[..., i] for i in range(4)], axis=0)
         x_eeg_spectrograms_stft = Image.fromarray(np.concatenate([s for s in x_eeg_spectrograms_stft], axis=0))
         x_eeg_spectrograms_stft = np.asarray(x_eeg_spectrograms_stft.resize((300, 400))).T

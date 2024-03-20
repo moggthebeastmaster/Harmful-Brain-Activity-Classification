@@ -50,7 +50,7 @@ if __name__ == '__main__':
 
     frame_work = "eeg_nn"
     model_name = "resnet_gru"
-    date = "20240308"
+    date = "20240318"
 
 
     output_dir = root.joinpath("outputs", "optuna", frame_work, model_name, date)

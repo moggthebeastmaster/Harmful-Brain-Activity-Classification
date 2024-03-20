@@ -42,7 +42,6 @@ def objective(trial:optuna.Trial):
         train_df = meta_df.loc[train_indexs]
         val_df = meta_df.loc[val_indexs]
         score_dict = runner.run_train(train_df, val_df, eegs_dir=eegs_dir, spectrograms_dir=spectrograms_dir)
-
         break
 
     return score_dict["kaggle_score"]
@@ -50,8 +49,8 @@ def objective(trial:optuna.Trial):
 if __name__ == '__main__':
 
     frame_work = "spectrograms_nn"
-    model_name = "eeg_efficientnet_b7"
-    date = "20240303"
+    model_name = "eeg_efficientnet_b0"
+    date = "20240316"
 
 
     output_dir = root.joinpath("outputs", "optuna", frame_work, model_name, date)
