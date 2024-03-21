@@ -1,10 +1,25 @@
 # Harmful-Brain-Activity-Classification
 
 ## Install
+~~~
+pip install -r requirements.txt
+~~~
 
+torch は以下を使用している。
+
+~~~
 pip install torch==2.1.2 torchvision==0.16.2 torchaudio==2.1.2 --index-url https://download.pytorch.org/whl/cu118
+~~~
+
+## 使用方法
+
+* 学習は train_cv.py を使う
+* 推論は submission.py を使う
+* 最適化にはtrain_optuna.py を使う。
 
 ## TODO
+
+* Runner および SubmissionRunner の使用方法差を作成する。
 
 ## Results
 
@@ -20,16 +35,28 @@ pip install torch==2.1.2 torchvision==0.16.2 torchaudio==2.1.2 --index-url https
 
 ### External Model
 
-| model_framework |                                           src                                           | 5-CV Score | LB Score |  update   |
-|:---------------:|:---------------------------------------------------------------------------------------:|:----------:|:--------:|:---------:|
-|   External01    |           https://www.kaggle.com/datasets/crackle/hms-efficientnetb0-pt-ckpts           |            |   0.4    | 2024/3/15 |
-|   External02    | https://www.kaggle.com/code/yunsuxiaozi/hms-baseline-resnet34d-512-512-training-5-folds |            |          | 2024/3/15 |
-|   External03    |              https://www.kaggle.com/code/andreasbis/hms-inference-lb-0-41               |            |          | 2024/3/16 |
+| model_framework |                                                src                                                 | 5-CV Score | LB Score |  update   |
+|:---------------:|:--------------------------------------------------------------------------------------------------:|:----------:|:--------:|:---------:|
+|   External01    |                https://www.kaggle.com/datasets/crackle/hms-efficientnetb0-pt-ckpts                 |            |   0.4    | 2024/3/15 |
+|   External02    |      https://www.kaggle.com/code/yunsuxiaozi/hms-baseline-resnet34d-512-512-training-5-folds       |            |   0.46   | 2024/3/15 |
+|   External03    |                    https://www.kaggle.com/code/andreasbis/hms-inference-lb-0-41                    |            |   0.41   | 2024/3/16 |
+|   External04    | https://www.kaggle.com/code/konstantinboyko/hms-resnet1d-gru-1-stage-inference-1-5-signal/notebook |            |   0.37   | 2024/3/16 |
+
+### Blend
+
+|                    models                    | 5-CV Score | LB Score |  update   |
+|:--------------------------------------------:|:----------:|:--------:|:---------:|
+|      WaveNet, XGBoost, efficientnet_b0       |            |   0.49   | 2024/3/10 |
+|           WaveNet, efficientnet_b0           |   0.7125   |   0.45   | 2024/2/23 |
+| efficientnetb0_wavenet_resnetgru_external01  |            |   0.38   | 2024/3/15 |
+|                 externalall                  |            |          | 2024/3/16 |
+| efficientnetb0_wavenet_resnetgru_externalall |            | time out | 2024/3/16 |
+| efficientnetb0_wavenet_resnetgru_external134 |            |          | 2024/3/17 |
+| efficientnetb0_wavenet_resnetgru_external14  |            |   0.36   | 2024/3/17 |
+
 
 ### Ensemble
 
-|                   models                    | 5-CV Score | LB Score |  update   |
-|:-------------------------------------------:|:----------:|:--------:|:---------:|
-|      WaveNet, XGBoost, efficientnet_b0      |            |   0.49   | 2024/3/10 |
-|          WaveNet, efficientnet_b0           |   0.7125   |   0.45   | 2024/2/23 |
-| efficientnetb0_wavenet_resnetgru_external01 |            |   0.38   | 2024/2/23 |
+|                    models                    | 5-CV Score | LB Score |  update   |
+|:--------------------------------------------:|:----------:|:--------:|:---------:|
+| efficientnetb0_wavenet_resnetgru_external14  |            |   0.33   | 2024/3/20 |

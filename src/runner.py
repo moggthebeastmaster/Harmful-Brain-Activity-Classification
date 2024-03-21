@@ -18,11 +18,18 @@ class InterfaceModel:
     """
 
     def initialize_model(self):
-        "もでる初期化"
+        """
+        モデル初期化
+        """
         pass
 
-    def train(self, train_df: pd.DataFrame, val_df: pd.DataFrame, eegs_dir: Path, spectrograms_dir: Path,
-              output_dir: Path,early_stop:bool) -> dict:
+    def train(self,
+              train_df: pd.DataFrame,
+              val_df: pd.DataFrame,
+              eegs_dir: Path,
+              spectrograms_dir: Path,
+              output_dir: Path,
+              early_stop:bool) -> dict:
         score_dict = {"kaggle_score": 0.0}
         return score_dict
 
@@ -39,6 +46,16 @@ class InterfaceModel:
 
 class Runner():
     def __init__(self, output_dir: Path, model: InterfaceModel, runner_config: RunnerConfig):
+        """
+        学習用のランナー
+        modelを渡す。
+        model は InterfaceModel のもつメソッドが必要
+        作成例としては EEGNeuralNetModel など
+        Args:
+            output_dir:
+            model:
+            runner_config: 基本的に固定
+        """
         self.output_dir = output_dir
         self.model = model
         self.runner_config = runner_config

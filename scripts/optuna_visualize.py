@@ -6,9 +6,9 @@ import sqlite3
 root = Path(__file__).parents[1]
 
 if __name__ == '__main__':
-    frame_work = "eeg_nn"
-    model_name = "resnet_gru"
-    date = "20240317"
+    frame_work = "spectrograms_nn"
+    model_name = "eeg_efficientnet_b0"
+    date = "20240316"
     output_dir = root.joinpath("outputs", "optuna", frame_work, model_name, date)
 
 

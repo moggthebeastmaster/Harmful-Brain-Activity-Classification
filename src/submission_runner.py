@@ -5,6 +5,7 @@ import numpy as np
 import tqdm
 from xgboost import XGBRegressor
 
+
 class SubmissionRunner:
 
     def __init__(self,
@@ -14,6 +15,15 @@ class SubmissionRunner:
                  spectrograms_dir: Path,
                  fold_num=5,
                  ):
+        """
+        提出用の submission.csv を作成するランナークラス
+        Args:
+            trained_dir_list:
+            meta_df:
+            eegs_dir:
+            spectrograms_dir:
+            fold_num:
+        """
         self.trained_dir_list = trained_dir_list
         self.meta_df = meta_df
         self.eegs_dir = eegs_dir
@@ -128,7 +138,6 @@ class SubmissionRunner:
         predicted_df = pd.DataFrame(np.concatenate([eeg_id, predict_y], axis=1), columns=["eeg_id"] + targets_columns)
         return predicted_df
 
-
     def predict_blend(self):
         predicted_df_list = []
         with tqdm.tqdm(self.trained_dir_list) as pbar:
@@ -168,21 +177,25 @@ class SubmissionRunner:
             if model_framework.startswith("External"):
                 external_df_list.append(predicted_df_list[index])
             else:
-                fold_pred_df = pd.concat([pd.read_csv(self.trained_dir_list[index]/f"fold_{n}"/"predicts.csv", index_col=0) for n in range(self.fold_num)])
-                fold_label_df = pd.concat([pd.read_csv(self.trained_dir_list[index]/f"fold_{n}"/"label.csv", index_col=0) for n in range(self.fold_num)])
-                fold_pred_df = fold_pred_df.astype({"eeg_id":int}).reset_index(drop=True)
-                fold_label_df = fold_label_df.astype({"eeg_id":int}).reset_index(drop=True)
+                fold_pred_df = pd.concat(
+                    [pd.read_csv(self.trained_dir_list[index] / f"fold_{n}" / "predicts.csv", index_col=0) for n in
+                     range(self.fold_num)])
+                fold_label_df = pd.concat(
+                    [pd.read_csv(self.trained_dir_list[index] / f"fold_{n}" / "label.csv", index_col=0) for n in
+                     range(self.fold_num)])
+                fold_pred_df = fold_pred_df.astype({"eeg_id": int}).reset_index(drop=True)
+                fold_label_df = fold_label_df.astype({"eeg_id": int}).reset_index(drop=True)
                 if train_x_df is None:
                     train_x_df = fold_pred_df
                     train_y_df = fold_label_df
                 else:
                     train_x_df = train_x_df.join(fold_pred_df.drop("eeg_id", axis=1), how='inner', rsuffix='_right')
 
-                test_x = predicted_df_list[index].astype({"eeg_id":int}).reset_index(drop=True)
+                test_x = predicted_df_list[index].astype({"eeg_id": int}).reset_index(drop=True)
                 if test_x_df is None:
                     test_x_df = test_x
                 else:
-                    test_x_df = test_x_df.join(test_x.drop("eeg_id", axis=1),how='inner', rsuffix='_right')
+                    test_x_df = test_x_df.join(test_x.drop("eeg_id", axis=1), how='inner', rsuffix='_right')
 
         eeg_id = predicted_df_list[0]["eeg_id"].to_numpy()[:, np.newaxis]
         targets_columns = list(predicted_df_list[0].columns[1:])
@@ -194,22 +207,24 @@ class SubmissionRunner:
             chain = RegressorChain(base_estimator=base_estimater, random_state=0)
             x = train_x_df.values[:, 1:]
             y = train_y_df.values[:, 1:]
-            chain.fit(x,y)
+            chain.fit(x, y)
 
             pred = chain.predict(test_x_df.values[:, 1:])
-            pred = np.clip(pred, 0., 1.,)
+            pred = np.clip(pred, 0., 1., )
             predict_y = pred / pred.sum(axis=1, keepdims=True)
 
-            our_predicted_df = pd.DataFrame(np.concatenate([eeg_id, predict_y], axis=1), columns=["eeg_id"] + targets_columns)
+            our_predicted_df = pd.DataFrame(np.concatenate([eeg_id, predict_y], axis=1),
+                                            columns=["eeg_id"] + targets_columns)
         else:
             our_predicted_df = None
 
         # external グループ内で平均をとる
-        if len(external_df_list)>0:
+        if len(external_df_list) > 0:
             values = [ex_predicted_df.iloc[:, 1:].to_numpy() for ex_predicted_df in external_df_list]
             values = np.sum(np.stack(values), axis=0)
             predict_y = values / values.sum(axis=1, keepdims=True)
-            ex_predicted_df = pd.DataFrame(np.concatenate([eeg_id, predict_y], axis=1), columns=["eeg_id"] + targets_columns)
+            ex_predicted_df = pd.DataFrame(np.concatenate([eeg_id, predict_y], axis=1),
+                                           columns=["eeg_id"] + targets_columns)
         else:
             ex_predicted_df = None
 
@@ -219,27 +234,10 @@ class SubmissionRunner:
         elif ex_predicted_df is None:
             predicted_df = our_predicted_df
         else:
-            values = np.sum(np.stack([our_predicted_df.iloc[:, 1:].to_numpy(), ex_predicted_df.iloc[:, 1:].to_numpy()]), axis=0)
+            values = np.sum(np.stack([our_predicted_df.iloc[:, 1:].to_numpy(), ex_predicted_df.iloc[:, 1:].to_numpy()]),
+                            axis=0)
             predict_y = values / values.sum(axis=1, keepdims=True)
-            predicted_df = pd.DataFrame(np.concatenate([eeg_id, predict_y], axis=1), columns=["eeg_id"] + targets_columns)
+            predicted_df = pd.DataFrame(np.concatenate([eeg_id, predict_y], axis=1),
+                                        columns=["eeg_id"] + targets_columns)
 
-        return predicted_df
-
-
-
-
-
-
-
-
-
-
-
-
-        eeg_id = predicted_df_list[0]["eeg_id"].to_numpy()[:, np.newaxis]
-        targets_columns = list(predicted_df_list[0].columns[1:])
-        values = [predicted_df.iloc[:, 1:].to_numpy() for predicted_df in predicted_df_list]
-        values = np.sum(np.stack(values), axis=0)
-        predict_y = values / values.sum(axis=1, keepdims=True)
-        predicted_df = pd.DataFrame(np.concatenate([eeg_id, predict_y], axis=1), columns=["eeg_id"] + targets_columns)
         return predicted_df
