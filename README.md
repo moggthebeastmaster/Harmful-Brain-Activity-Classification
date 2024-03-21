@@ -19,7 +19,10 @@ pip install torch==2.1.2 torchvision==0.16.2 torchaudio==2.1.2 --index-url https
 
 ## TODO
 
-* Runner および SubmissionRunner の使用方法差を作成する。
+* Runner および SubmissionRunner の使用方法を作成する。
+* 単一モデルで CV:0.7以下 , LB0.5 以下 程度のモデルを複数用意したい
+  * 5 つくらいが目標
+* アンサンブルで LB 0.3 を切ることが目標
 
 ## Results
 
@@ -49,14 +52,17 @@ pip install torch==2.1.2 torchvision==0.16.2 torchaudio==2.1.2 --index-url https
 |      WaveNet, XGBoost, efficientnet_b0       |            |   0.49   | 2024/3/10 |
 |           WaveNet, efficientnet_b0           |   0.7125   |   0.45   | 2024/2/23 |
 | efficientnetb0_wavenet_resnetgru_external01  |            |   0.38   | 2024/3/15 |
+|                  external14                  |            |          | 2024/3/16 |
 |                 externalall                  |            |          | 2024/3/16 |
 | efficientnetb0_wavenet_resnetgru_externalall |            | time out | 2024/3/16 |
-| efficientnetb0_wavenet_resnetgru_external134 |            |          | 2024/3/17 |
+| efficientnetb0_wavenet_resnetgru_external134 |            | time out | 2024/3/17 |
 | efficientnetb0_wavenet_resnetgru_external14  |            |   0.36   | 2024/3/17 |
 
 
 ### Ensemble
 
-|                    models                    | 5-CV Score | LB Score |  update   |
-|:--------------------------------------------:|:----------:|:--------:|:---------:|
-| efficientnetb0_wavenet_resnetgru_external14  |            |   0.33   | 2024/3/20 |
+|                   models                    | 5-CV Score | LB Score |  update   |
+|:-------------------------------------------:|:----------:|:--------:|:---------:|
+| efficientnetb0_wavenet_resnetgru_external14 |            |   0.33   | 2024/3/20 |
+|      efficientnetb0_wavenet_resnetgru       |            |   0.56   | 2024/3/21 |
+|  efficientnetb0_wavenet_resnetgru_xgboost   |            |   0.66   | 2024/3/21 |
