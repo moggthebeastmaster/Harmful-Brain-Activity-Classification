@@ -52,8 +52,8 @@ pip install torch==2.1.2 torchvision==0.16.2 torchaudio==2.1.2 --index-url https
 |      WaveNet, XGBoost, efficientnet_b0       |            |   0.49   | 2024/3/10 |
 |           WaveNet, efficientnet_b0           |   0.7125   |   0.45   | 2024/2/23 |
 | efficientnetb0_wavenet_resnetgru_external01  |            |   0.38   | 2024/3/15 |
-|                  external14                  |            |          | 2024/3/16 |
-|                 externalall                  |            |          | 2024/3/16 |
+|                  external14                  |            |   0.33   | 2024/3/23 |
+|                 externalall                  |            |   0.34   | 2024/3/23 |
 | efficientnetb0_wavenet_resnetgru_externalall |            | time out | 2024/3/16 |
 | efficientnetb0_wavenet_resnetgru_external134 |            | time out | 2024/3/17 |
 | efficientnetb0_wavenet_resnetgru_external14  |            |   0.36   | 2024/3/17 |
