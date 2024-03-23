@@ -9,6 +9,7 @@ import torchaudio
 import pyarrow.parquet as pq
 import librosa
 from PIL import Image
+from scipy.signal import butter, lfilter
 
 root = Path(__file__).parents[4]
 sys.path.append(str(root))
@@ -29,26 +30,36 @@ COLUMN_NAMES_ALL = ['Fp1', 'F3', 'C3', 'P3', 'F7', 'T3', 'T5', 'O1', 'Fz', 'Cz',
                     'T6', 'O2', 'EKG']
 COLUMN_NAMES_ALL_INV = {key: index for index, key in enumerate(COLUMN_NAMES_ALL)}
 
-COLUMN_NAMES = ['Fp1', 'F3', 'C3', 'P3', 'F7', 'T3', 'T5', 'O1', 'Fz', 'Cz', 'Pz', 'Fp2', 'F4', 'C4', 'P4', 'F8', 'T4',
-                'T6', 'O2']
-
 COLUMN_NAMES = ['LL', 'LP', 'RP', 'RR']
 CHAIN_FEATURES = [['Fp1', 'F7', 'T3', 'T5', 'O1'],
                   ['Fp1', 'F3', 'C3', 'P3', 'O1'],
-                  ['Fp2', 'F8', 'T4', 'T6', 'O2'],
-                  ['Fp2', 'F4', 'C4', 'P4', 'O2']]
+                  ['Fp2', 'F4', 'C4', 'P4', 'O2'],
+                  ['Fp2', 'F8', 'T4', 'T6', 'O2']]
 
 
 def stft(x):
-    stft_spec = librosa.stft(y=x, hop_length=x.shape[-1] // 256,
-                             n_fft=255, win_length=128)
-    rev = librosa.power_to_db(stft_spec, ref=np.max).astype(np.float32)
-    return rev
+    x = butter_lowpass_filter(x)
+    stft_spec = librosa.stft(y=x,
+                             hop_length=x.shape[-1] // 256,
+                             n_fft=1024,
+                             win_length=128,
+                             )
+    # rev = librosa.power_to_db(stft_spec[:128], ref=np.max).astype(np.float32)
+    S, phase = librosa.magphase(stft_spec)
+    S = S[:128]
+
+    return S
 
 
 def mel_spec_func(x):
-    mel_spec = librosa.feature.melspectrogram(y=x, sr=200, hop_length=x.shape[-1] // 256,
-                                              n_fft=1024, n_mels=128, fmin=0, fmax=20, win_length=128)
+    mel_spec = librosa.feature.melspectrogram(y=x,
+                                              sr=200,
+                                              hop_length=x.shape[-1] // 256,
+                                              n_fft=1024,
+                                              n_mels=128,
+                                              fmin=0,
+                                              fmax=20,
+                                              win_length=128)
     rev = librosa.power_to_db(mel_spec, ref=np.max).astype(np.float32)
     return rev
 
@@ -118,8 +129,9 @@ class SpectrogramsEEGDataset(torch.utils.data.Dataset):
 
         if False:
             import matplotlib.pyplot as plt
-            # x = x[1]
-            plt.imshow((((x.T - x.min()) / (x.max() - x.min())) * 255).astype(np.uint8), cmap='viridis', aspect='auto',
+
+            x_show = np.concatenate([x1, x2, x3], axis=0)
+            plt.imshow((((x_show.T - x_show.min()) / (x_show.max() - x_show.min())) * 255).astype(np.uint8), cmap='viridis', aspect='auto',
                        origin='lower')
             plt.show()
 
@@ -193,6 +205,16 @@ class SpectrogramsEEGDataset(torch.utils.data.Dataset):
                 x_chain[..., k] += mel_spec_func(x[:, COLUMN_NAMES_ALL_INV[CHAIN_FEATURES[k][inner_k]]] \
                                  - x[:, COLUMN_NAMES_ALL_INV[CHAIN_FEATURES[k][inner_k+1]]])
         x_chain = x_chain/4
+        """
+        # MEL_SPECTROGRAM をとる
+        x_chain = np.zeros(shape=(len(COLUMN_NAMES), 10000))
+        for k, name in enumerate(COLUMN_NAMES):
+            for inner_k in range(len(CHAIN_FEATURES[k]) - 1):
+                x_chain[k] += x[:, COLUMN_NAMES_ALL_INV[CHAIN_FEATURES[k][inner_k]]] \
+                                 - x[:, COLUMN_NAMES_ALL_INV[CHAIN_FEATURES[k][inner_k+1]]]
+        x_chain = mel_spec_func(x_chain/4)
+        x_chain = np.transpose(x_chain, (1,2,0))
+        """
 
         mean_values = np.nanmean(x_chain, axis=0)
         nan_indices = np.isnan(x_chain)
@@ -218,7 +240,7 @@ class SpectrogramsEEGDataset(torch.utils.data.Dataset):
         x_chain[nan_indices] = np.take(mean_values, nan_indices.nonzero()[1])
 
         x_eeg_spectrograms_stft = x_chain.copy()
-        # x_eeg_spectrograms_stft = self.normalize(x_eeg_spectrograms_stft, axis=(0,1))
+        x_eeg_spectrograms_stft = self.normalize(x_eeg_spectrograms_stft, axis=(0,1))
         x_eeg_spectrograms_stft = np.stack([x_eeg_spectrograms_stft[..., i] for i in range(4)], axis=0)
         x_eeg_spectrograms_stft = Image.fromarray(np.concatenate([s for s in x_eeg_spectrograms_stft], axis=0))
         x_eeg_spectrograms_stft = np.asarray(x_eeg_spectrograms_stft.resize((300, 400))).T
@@ -245,10 +267,19 @@ class SpectrogramsEEGDataset(torch.utils.data.Dataset):
         return np.nan_to_num(eeg_array, nan=0)
 
 
+def butter_lowpass_filter(
+        data, cutoff_freq=20, sampling_rate=200, order=4
+):
+    nyquist = 0.5 * sampling_rate
+    normal_cutoff = cutoff_freq / nyquist
+    b, a = butter(order, normal_cutoff, btype="low", analog=False)
+    filtered_data = lfilter(b, a, data, axis=0)
+    return filtered_data
+
 def main():
     train = True
 
-    config = EfficientNetConfig(data_use_second=600, mix_up_alpha=0.1)
+    config = EfficientNetConfig(data_use_second=600, mix_up_alpha=0., time_mask_range=0, frequency_mask_range=0)
     if train:
         eegs_dir = root.joinpath("data/hms-harmful-brain-activity-classification/train_eegs")
         spectrograms_dir = root.joinpath("data/hms-harmful-brain-activity-classification/train_spectrograms")
@@ -263,6 +294,8 @@ def main():
     for data_one in tqdm.tqdm(dataset):
         pass
         # print(data_one)
+
+
 
 
 if __name__ == '__main__':
