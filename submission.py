@@ -29,11 +29,11 @@ def main():
 
     from src.submission_runner import SubmissionRunner
 
-    trained_dir_list = [root.joinpath("outputs/runner/nn_model/wave_net/20240215"),
-                        root.joinpath("outputs/runner/spectrograms_nn/efficientnet_b0/20240223"),
+    trained_dir_list = [#root.joinpath("outputs/runner/nn_model/wave_net/20240215"),
+                        #root.joinpath("outputs/runner/spectrograms_nn/efficientnet_b0/20240223"),
                         # root.joinpath("outputs/runner/xgboost/xgboost/20240302"),
-                        root.joinpath("outputs/runner/eeg_nn/resnet_gru/20240314_no_early"),
-                        # root.joinpath("outputs/runner/external01"),
+                        #root.joinpath("outputs/runner/eeg_nn/resnet_gru/20240314_no_early"),
+                        root.joinpath("outputs/runner/external01"),
                         # root.joinpath("outputs/runner/external02"),
                         # root.joinpath("outputs/runner/external03"),
                         # root.joinpath("outputs/runner/external04"),

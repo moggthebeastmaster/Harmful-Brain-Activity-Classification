@@ -28,7 +28,8 @@ def objective(trial:optuna.Trial):
                                 drop_out=trial.suggest_float("drop_out", 0., 1.),
                                 mix_up_alpha = trial.suggest_float("mix_up_alpha", 0., 2.),
                                 num_worker=os.cpu_count()//2,
-                                max_epoch=20,
+                                max_epoch=5,
+                                early_stop=False,
                                 )
     model = SpectrogramsModel(config=config)
 
@@ -51,7 +52,7 @@ if __name__ == '__main__':
 
     frame_work = "spectrograms_nn"
     model_name = "eeg_efficientnet_b0"
-    date = "20240323"
+    date = "20240324"
 
 
     output_dir = root.joinpath("outputs", "optuna", frame_work, model_name, date)

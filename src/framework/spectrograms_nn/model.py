@@ -79,16 +79,18 @@ class SpectrogramsModel():
 
         self.initialize_model(pretrain=True)
 
-        train_dataset = SpectrogramsDataset(meta_df=train_df,
-                                            spectrograms_dir=spectrograms_dir,
-                                            config=self.config,
-                                            with_label=True,
-                                            train_mode=True)
-        val_dataset = SpectrogramsDataset(meta_df=val_df,
-                                          spectrograms_dir=spectrograms_dir,
-                                          config=self.config,
-                                          with_label=True,
-                                          train_mode=False)
+        train_dataset = self.dataset(meta_df=train_df,
+                                     eegs_dir=eegs_dir,
+                                     spectrograms_dir=spectrograms_dir,
+                                     config=self.config,
+                                     with_label=True,
+                                     train_mode=True)
+        val_dataset = self.dataset(meta_df=val_df,
+                                   eegs_dir=eegs_dir,
+                                   spectrograms_dir=spectrograms_dir,
+                                   config=self.config,
+                                   with_label=True,
+                                   train_mode=False)
         data_module = SpectrogramsDataModule(train_dataset=train_dataset, val_dataset=val_dataset, config=self.config)
 
         callbacks = [TQDMProgressBar()]
@@ -144,24 +146,17 @@ class SpectrogramsModel():
         return {"kaggle_score": score}
 
     def predict(self, test_df: pd.DataFrame, eegs_dir: Path, spectrograms_dir: Path) -> pd.DataFrame:
-        if self.config.model_framework in ["efficientnet_b0", "efficientnet_b7"]:
-            test_dataset = SpectrogramsDataset(meta_df=test_df,
-                                               spectrograms_dir=spectrograms_dir,
-                                               config=self.config,
-                                               with_label=False,
-                                               train_mode=False)
-        elif self.config.model_framework in ["eeg_efficientnet_b0", "eeg_efficientnet_b7"]:
-            test_dataset = SpectrogramsEEGDataset(meta_df=test_df,
-                                                  eegs_dir=eegs_dir,
-                                                  spectrograms_dir=spectrograms_dir,
-                                                  config=self.config,
-                                                  with_label=False,
-                                                  train_mode=False)
+        test_dataset = self.dataset(meta_df=test_df,
+                                    eegs_dir=eegs_dir,
+                                    spectrograms_dir=spectrograms_dir,
+                                    config=self.config,
+                                    with_label=False,
+                                    train_mode=False)
 
         test_dataloader = DataLoader(test_dataset,
                                      batch_size=self.config.batch_size,
                                      shuffle=False,
-                                     num_workers=os.cpu_count()//2,
+                                     num_workers=os.cpu_count() // 2,
                                      )
 
         harf = False

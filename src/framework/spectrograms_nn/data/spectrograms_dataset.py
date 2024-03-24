@@ -82,7 +82,7 @@ class SpectrogramsDataset(torch.utils.data.Dataset):
 
         if False:
             import matplotlib.pyplot as plt
-            plt.imshow((((x.T - x.min()) / (x.max() - x.min())) * 255).astype(np.uint8), cmap='viridis', aspect='auto',
+            plt.imshow((((x[0].T - x.min()) / (x.max() - x.min())) * 255).astype(np.uint8), cmap='viridis', aspect='auto',
                        origin='lower')
             plt.show()
 

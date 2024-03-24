@@ -38,17 +38,13 @@ CHAIN_FEATURES = [['Fp1', 'F7', 'T3', 'T5', 'O1'],
 
 
 def stft(x):
-    x = butter_lowpass_filter(x)
     stft_spec = librosa.stft(y=x,
                              hop_length=x.shape[-1] // 256,
                              n_fft=1024,
                              win_length=128,
                              )
-    # rev = librosa.power_to_db(stft_spec[:128], ref=np.max).astype(np.float32)
-    S, phase = librosa.magphase(stft_spec)
-    S = S[:128]
-
-    return S
+    magnitude, phase = librosa.magphase(stft_spec)
+    return magnitude[:, :128]
 
 
 def mel_spec_func(x):
@@ -57,7 +53,7 @@ def mel_spec_func(x):
                                               hop_length=x.shape[-1] // 256,
                                               n_fft=1024,
                                               n_mels=128,
-                                              fmin=0,
+                                              fmin=0.0,
                                               fmax=20,
                                               win_length=128)
     rev = librosa.power_to_db(mel_spec, ref=np.max).astype(np.float32)
@@ -92,6 +88,8 @@ class SpectrogramsEEGDataset(torch.utils.data.Dataset):
         self.masking1 = torchaudio.transforms.FrequencyMasking(freq_mask_param=self.config.frequency_mask_range)
         self.masking2 = torchaudio.transforms.TimeMasking(time_mask_param=self.config.time_mask_range)
 
+        self.bandpass_filter = ButterBandpassFilter(lowcut=0.5, highcut=20, fs=200, order=2)
+
         if self.config.mix_up_alpha > 0:
             self.beta = torch.distributions.Beta(self.config.mix_up_alpha, self.config.mix_up_alpha)
 
@@ -124,16 +122,24 @@ class SpectrogramsEEGDataset(torch.utils.data.Dataset):
             x3 = self.masking1(torch.from_numpy(x3))
             x3 = self.masking2(x3).numpy()
 
-        # cast and to 3ch
-        x = np.stack([x1, x2, x3], axis=0)
+        s = 512
+        x1 = np.asarray(Image.fromarray(x1).resize((s, s)))
+        x2 = np.asarray(Image.fromarray(x2).resize((s, s)))
+        x3 = np.asarray(Image.fromarray(x3[:, 22:-22]).resize((s, s)))
+
+
+
 
         if False:
             import matplotlib.pyplot as plt
-
             x_show = np.concatenate([x1, x2, x3], axis=0)
             plt.imshow((((x_show.T - x_show.min()) / (x_show.max() - x_show.min())) * 255).astype(np.uint8), cmap='viridis', aspect='auto',
                        origin='lower')
             plt.show()
+
+
+
+        x = np.stack([x1, x2, x3], axis=0)
 
         return x, y, eeg_id, self.meta_eeg_label_offset_seconds[index]
 
@@ -194,10 +200,14 @@ class SpectrogramsEEGDataset(torch.utils.data.Dataset):
         # 対象データの切り出し
         x = x[target_start_point:target_end_point]
 
+
         mean_values = np.nanmean(x, axis=0)
         nan_indices = np.isnan(x)
         x[nan_indices] = np.take(mean_values, nan_indices.nonzero()[1])
 
+        # フィルター
+        x = self.bandpass_filter(x)
+        """
         # MEL_SPECTROGRAM をとる
         x_chain = np.zeros(shape=(128, 257, len(COLUMN_NAMES)))
         for k, name in enumerate(COLUMN_NAMES):
@@ -212,38 +222,40 @@ class SpectrogramsEEGDataset(torch.utils.data.Dataset):
             for inner_k in range(len(CHAIN_FEATURES[k]) - 1):
                 x_chain[k] += x[:, COLUMN_NAMES_ALL_INV[CHAIN_FEATURES[k][inner_k]]] \
                                  - x[:, COLUMN_NAMES_ALL_INV[CHAIN_FEATURES[k][inner_k+1]]]
-        x_chain = mel_spec_func(x_chain/4)
-        x_chain = np.transpose(x_chain, (1,2,0))
-        """
+        x_chain_mel = mel_spec_func(x_chain/4)
+        x_chain_mel = np.transpose(x_chain_mel, (1,2,0))
 
-        mean_values = np.nanmean(x_chain, axis=0)
-        nan_indices = np.isnan(x_chain)
-        x_chain[nan_indices] = np.take(mean_values, nan_indices.nonzero()[1])
+        mean_values = np.nanmean(x_chain_mel, axis=0)
+        nan_indices = np.isnan(x_chain_mel)
+        x_chain_mel[nan_indices] = np.take(mean_values, nan_indices.nonzero()[1])
 
-        x_eeg_spectrograms = x_chain.copy()
+        x_eeg_spectrograms = x_chain_mel.copy()
         x_eeg_spectrograms = self.normalize(x_eeg_spectrograms, axis=(0,1))
-        x_eeg_spectrograms = np.stack([x_eeg_spectrograms[..., i] for i in range(4)], axis=0)
-        x_eeg_spectrograms = Image.fromarray(np.concatenate([s for s in x_eeg_spectrograms], axis=0))
-        x_eeg_spectrograms = np.asarray(x_eeg_spectrograms.resize((300, 400))).T
+        x_eeg_spectrograms = np.concatenate([x_eeg_spectrograms[..., i] for i in range(4)], axis=0)
+        x_eeg_spectrograms = x_eeg_spectrograms.T
 
-
+        """
         # STFT をとる
-        x_chain = np.zeros(shape=(128, 257, len(COLUMN_NAMES)))
+        x_chain_stft = np.zeros(shape=(128, 257, len(COLUMN_NAMES)))
         for k, name in enumerate(COLUMN_NAMES):
             for inner_k in range(len(CHAIN_FEATURES[k]) - 1):
-                x_chain[..., k] += stft(x[:, COLUMN_NAMES_ALL_INV[CHAIN_FEATURES[k][inner_k]]] \
+                x_chain_stft[..., k] += stft(x[:, COLUMN_NAMES_ALL_INV[CHAIN_FEATURES[k][inner_k]]] \
                                  - x[:, COLUMN_NAMES_ALL_INV[CHAIN_FEATURES[k][inner_k+1]]])
-        x_chain = x_chain/4
+        x_chain_stft = x_chain_stft/4
+        """
+        x_chain_stft = stft(x_chain/4)
+        x_chain_stft = np.transpose(x_chain_stft, (1,2,0))
 
-        mean_values = np.nanmean(x_chain, axis=0)
-        nan_indices = np.isnan(x_chain)
-        x_chain[nan_indices] = np.take(mean_values, nan_indices.nonzero()[1])
 
-        x_eeg_spectrograms_stft = x_chain.copy()
+
+        mean_values = np.nanmean(x_chain_stft, axis=0)
+        nan_indices = np.isnan(x_chain_stft)
+        x_chain_stft[nan_indices] = np.take(mean_values, nan_indices.nonzero()[1])
+
+        x_eeg_spectrograms_stft = np.clip(x_chain_stft.copy(), np.exp(-6), np.exp(10))
         x_eeg_spectrograms_stft = self.normalize(x_eeg_spectrograms_stft, axis=(0,1))
-        x_eeg_spectrograms_stft = np.stack([x_eeg_spectrograms_stft[..., i] for i in range(4)], axis=0)
-        x_eeg_spectrograms_stft = Image.fromarray(np.concatenate([s for s in x_eeg_spectrograms_stft], axis=0))
-        x_eeg_spectrograms_stft = np.asarray(x_eeg_spectrograms_stft.resize((300, 400))).T
+        x_eeg_spectrograms_stft = np.concatenate([x_eeg_spectrograms_stft[..., i] for i in range(4)], axis=0)
+        x_eeg_spectrograms_stft = x_eeg_spectrograms_stft.T
 
         if False:
             import matplotlib.pyplot as plt
@@ -267,14 +279,26 @@ class SpectrogramsEEGDataset(torch.utils.data.Dataset):
         return np.nan_to_num(eeg_array, nan=0)
 
 
-def butter_lowpass_filter(
-        data, cutoff_freq=20, sampling_rate=200, order=4
-):
-    nyquist = 0.5 * sampling_rate
-    normal_cutoff = cutoff_freq / nyquist
-    b, a = butter(order, normal_cutoff, btype="low", analog=False)
-    filtered_data = lfilter(b, a, data, axis=0)
-    return filtered_data
+def _butter_bandpass(lowcut, highcut, fs, order=5):
+    return butter(order, [lowcut, highcut], fs=fs, btype="band")
+
+class ButterBandpassFilter:
+    def __init__(self, lowcut, highcut, fs, order=5):
+        b, a = _butter_bandpass(lowcut, highcut, fs, order=order)
+        self.b = b
+        self.a = a
+
+    def __call__(self, data):
+        filtered_data = lfilter(self.b, self.a, data, axis=0)
+
+        if False:
+            import matplotlib.pyplot as plt
+            plt.plot(data[:500, :1])
+            plt.plot(filtered_data[:500, :1])
+            plt.show()
+
+        return filtered_data
+
 
 def main():
     train = True
@@ -283,7 +307,7 @@ def main():
     if train:
         eegs_dir = root.joinpath("data/hms-harmful-brain-activity-classification/train_eegs")
         spectrograms_dir = root.joinpath("data/hms-harmful-brain-activity-classification/train_spectrograms")
-        meta_df = pd.read_csv(root.joinpath("data/hms-harmful-brain-activity-classification/train.csv"))[:1000]
+        meta_df = pd.read_csv(root.joinpath("data/hms-harmful-brain-activity-classification/train.csv"))[:100]
     else:
         eegs_dir = root.joinpath("data/hms-harmful-brain-activity-classification/test_eegs")
         spectrograms_dir = root.joinpath("data/hms-harmful-brain-activity-classification/test_spectrograms")
