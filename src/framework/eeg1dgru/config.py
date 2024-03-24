@@ -31,6 +31,8 @@ class Eeg1dGRUConfig(ConfigBase):
     in_channels: int = len(RAW_EEG_CHANNEL_LIST)
     kernels: list[int] = dataclasses.field(default_factory=lambda: [3, 5, 7, 9])
     planes: int = 24
+    resnet_out_features: int = 128
+    gru_out_features: int = 128
 
     batch_size: int = 16
     num_worker: int = 2

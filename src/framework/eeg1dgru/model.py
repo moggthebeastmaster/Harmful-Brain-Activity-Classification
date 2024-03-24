@@ -65,9 +65,9 @@ class ResNet1dEncoder(nn.Module):
         self.planes = cfg.planes
         self.parallel_conv = nn.ModuleList()
         self.in_channels = cfg.in_channels
+        out_features = cfg.resnet_out_features
 
         fixed_kernel_size = cfg.fixed_kernel_size
-        num_classes = cfg.num_classes
 
         # kernel size ごとの 1dconv
         for i, kernel_size in enumerate(list(self.kernels)):
@@ -82,6 +82,7 @@ class ResNet1dEncoder(nn.Module):
         self.block = self._make_resnet_layer(kernel_size=fixed_kernel_size, stride=1, padding=fixed_kernel_size//2)
         self.bn2 = nn.BatchNorm1d(num_features=self.planes)
         self.avgpool = nn.AvgPool1d(kernel_size=6, stride=6, padding=2)
+        self.linear = nn.Linear(in_features=168, out_features=out_features)
 
 
     def _make_resnet_layer(self, kernel_size, stride, blocks=9, padding=0):
@@ -125,7 +126,8 @@ class ResNet1dEncoder(nn.Module):
         out = self.relu(out)
         out = self.avgpool(out)  
         
-        out = out.reshape(out.shape[0], -1)  
+        out = out.reshape(out.shape[0], -1)
+        out = self.linear(out)
         return out
 
 
@@ -154,8 +156,9 @@ class EegNet(nn.Module):
         self.res_encoder = ResNet1dEncoder(cfg=cfg)
         self.gru_encoder = GRUEncoder(cfg=cfg)
 
-        self.fc = nn.Linear(in_features=424, out_features=num_classes)
-    
+        in_features = cfg.resnet_out_features + cfg.gru_out_features*2
+        self.fc = nn.Linear(in_features=in_features, out_features=num_classes)
+        
 
     def forward(self, x):
         res_out = self.res_encoder(x)
@@ -404,11 +407,8 @@ class EegLightningModel(LightningModule):
         p_1 = p_1 * mask
         p_2 = 1 - p_1
 
-        p_1 = p_1[..., None]    # (B,) -> (B, 1)
-        p_2 = p_2[..., None]    # (B,) -> (B, 1)
-
-        X = X * p_1 + rand_X * p_2
-        y = y * p_1 + rand_y * p_2
+        X = X * p_1[:, None, None] + rand_X * p_2[:, None, None]
+        y = y * p_1[:, None] + rand_y * p_2[:, None]
 
         return X, y
 

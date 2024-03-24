@@ -16,7 +16,7 @@ if __name__ == '__main__':
     eegs_dir = data_root.joinpath("raw_eeg")
     spectrograms_dir = data_root.joinpath("spectrogram")
     meta_df = pd.read_csv(data_root.joinpath("train.csv"))
-    output_dir = root.joinpath("outputs", "runner", "eeg1dgru", "20240324")
+    output_dir = root.joinpath("outputs", "runner", "eeg1dgru_mixup", "20240324")
 
     config = Eeg1dGRUConfig(
         model_framework="resnet_1d_gru",
