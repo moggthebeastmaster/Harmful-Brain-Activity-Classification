@@ -18,7 +18,6 @@ if __name__ == '__main__':
     meta_df = pd.read_csv(data_root.joinpath("train.csv"))
     output_dir = root.joinpath("outputs", "runner", "eeg1dgru", "20240324")
 
-
     config = Eeg1dGRUConfig(
         model_framework="resnet_1d_gru",
         batch_size=2**4,

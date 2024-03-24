@@ -56,10 +56,10 @@ class ResNet_1D_Block(nn.Module):
         return out
 
 
-class EegNet(nn.Module):
+class ResNet1dEncoder(nn.Module):
+    def __init__(self, cfg:Eeg1dGRUConfig):
+        super(ResNet1dEncoder, self).__init__()
 
-    def __init__(self, cfg: Eeg1dGRUConfig):
-        super(EegNet, self).__init__()
         self.cfg = cfg
         self.kernels = cfg.kernels
         self.planes = cfg.planes
@@ -68,7 +68,7 @@ class EegNet(nn.Module):
 
         fixed_kernel_size = cfg.fixed_kernel_size
         num_classes = cfg.num_classes
-        
+
         # kernel size ごとの 1dconv
         for i, kernel_size in enumerate(list(self.kernels)):
             sep_conv = nn.Conv1d(in_channels=self.in_channels, out_channels=self.planes, kernel_size=(kernel_size),
@@ -82,8 +82,6 @@ class EegNet(nn.Module):
         self.block = self._make_resnet_layer(kernel_size=fixed_kernel_size, stride=1, padding=fixed_kernel_size//2)
         self.bn2 = nn.BatchNorm1d(num_features=self.planes)
         self.avgpool = nn.AvgPool1d(kernel_size=6, stride=6, padding=2)
-        self.rnn = nn.GRU(input_size=self.in_channels, hidden_size=128, num_layers=1, bidirectional=True)
-        self.fc = nn.Linear(in_features=424, out_features=num_classes)
 
 
     def _make_resnet_layer(self, kernel_size, stride, blocks=9, padding=0):
@@ -99,8 +97,9 @@ class EegNet(nn.Module):
                                        stride=stride, padding=padding, downsampling=downsampling))
 
         return nn.Sequential(*layers)
-    
-    def extract_features(self, x: torch.Tensor)->torch.Tensor:
+
+
+    def forward(self, x: torch.Tensor)->torch.Tensor:
         """_summary_
 
         Args:
@@ -127,15 +126,43 @@ class EegNet(nn.Module):
         out = self.avgpool(out)  
         
         out = out.reshape(out.shape[0], -1)  
-        rnn_out, _ = self.rnn(x.permute(0, 2, 1))
-        new_rnn_h = rnn_out[:, -1, :]  
+        return out
 
-        new_out = torch.cat([out, new_rnn_h], dim=1) 
-        return new_out
+
+class GRUEncoder(nn.Module):
+    def __init__(self, cfg: Eeg1dGRUConfig):
+        super(GRUEncoder, self).__init__()
+        self.cfg = cfg
+        self.in_channels = cfg.in_channels
+
+        self.rnn = nn.GRU(input_size=self.in_channels, hidden_size=128, num_layers=1, bidirectional=True)
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        rnn_out, _ = self.rnn(x)    #(B, L, C)
+        new_rnn_h = rnn_out[:, -1, :]  # (B, 256)
+
+        return new_rnn_h
+
+
+class EegNet(nn.Module):
+
+    def __init__(self, cfg: Eeg1dGRUConfig):
+        super(EegNet, self).__init__()
+        self.cfg = cfg
+        
+        num_classes = self.cfg.num_classes
+        self.res_encoder = ResNet1dEncoder(cfg=cfg)
+        self.gru_encoder = GRUEncoder(cfg=cfg)
+
+        self.fc = nn.Linear(in_features=424, out_features=num_classes)
     
+
     def forward(self, x):
-        new_out = self.extract_features(x)
-        result = self.fc(new_out)  
+        res_out = self.res_encoder(x)
+        gru_out = self.gru_encoder(x)
+
+        out = torch.cat([res_out, gru_out], dim=1)
+        result = self.fc(out)  
 
         return result
     
@@ -146,6 +173,7 @@ class EegDataModule(LightningDataModule):
         self.train_dataset: Dataset = train_dataset
         self.val_dataset: Dataset = val_dataset
         self.config: Eeg1dGRUConfig = config
+
 
     def train_dataloader(self):
         return DataLoader(
@@ -172,11 +200,13 @@ class EegDataModule(LightningDataModule):
 class Eeg1dGRUModel():
     def __init__(self, config: Eeg1dGRUConfig):
         self.config = config
+        self.target_columns = config.target_columns
 
         self.dataset_class = Eeg1dGRUDataset
         self.device = torch.device("cuda:0") if torch.cuda.is_available() else torch.device("cpu")
         self.model = None
         self.initialize_model()
+
 
     def initialize_model(self):
         self.model = EegLightningModel(self.config)
@@ -217,7 +247,7 @@ class Eeg1dGRUModel():
         labels_list = []
         val_dataloader = data_module.val_dataloader()
         for batch in tqdm.tqdm(val_dataloader, desc="predict val dataset"):
-            input_data, labels, eeg_id, offset_num = batch
+            input_data, labels, eeg_id = batch
             with torch.no_grad():
                 predicts_logit = self.model(input_data.to(self.device))
                 predict_y.append(torch.softmax(predicts_logit, dim=1).cpu().detach().numpy())
@@ -261,7 +291,7 @@ class Eeg1dGRUModel():
         predict_y = []
         eeg_id_list = []
         for batch in tqdm.tqdm(test_dataloader, desc="predict val dataset"):
-            input_data, labels, eeg_id, offset_num = batch
+            input_data, labels, eeg_id = batch
             with torch.no_grad():
                 predicts_logit = self.model(input_data.to(self.device).to(float_type))
                 predict_y.append(torch.softmax(predicts_logit, dim=1).cpu().detach().numpy())
@@ -274,8 +304,10 @@ class Eeg1dGRUModel():
 
         return predicts_df
 
+
     def save(self, file_path: Path):
         torch.save(self.model.eeg_classifier.state_dict(), file_path)
+
 
     def load(self, file_path: Path):
         self.model.eeg_classifier.load_state_dict(state_dict=torch.load(file_path, map_location=torch.device('cpu')))
@@ -308,6 +340,7 @@ class EegLightningModel(LightningModule):
     
     def training_step(self, batch, batch_idx) -> dict[str, torch.Tensor]:
         X, y, _ = batch
+        X, y = self.mixup(X, y)
         logits = self(X)
         loss = self._loss_func(logits, y)
         loss = loss.mean()
@@ -347,6 +380,37 @@ class EegLightningModel(LightningModule):
         scheduler = transformers.get_cosine_schedule_with_warmup(optimizer, warmup_steps, total_steps)
         # scheduler = transformers.get_cosine_with_hard_restarts_schedule_with_warmup(optimizer, warmup_steps, total_steps, num_cycles=2)
         return [optimizer], [{"scheduler": scheduler, "interval": "step"}]
+    
+    def mixup(self, X: torch.Tensor, y: torch.Tensor)->tuple[torch.Tensor, torch.Tensor]:
+        """mini batch内でmixupを行う
+
+        Args:
+            X (torch.Tensor): features
+            y (torch.Tensor): targets
+
+        Returns:
+            tuple[torch.Tensor, torch.Tensor]: mixuped (X, y)
+        """
+
+
+        rand_idx = torch.randperm(X.shape[0])
+        rand_X = X[rand_idx]
+        rand_y = y[rand_idx]
+
+        p_1 = torch.rand(size=(X.shape[0],)).to(X.device)
+        mask = torch.full(size=(X.shape[0],), fill_value=self.config.mixup_rate)
+        mask = torch.bernoulli(mask).to(X.device)
+
+        p_1 = p_1 * mask
+        p_2 = 1 - p_1
+
+        p_1 = p_1[..., None]    # (B,) -> (B, 1)
+        p_2 = p_2[..., None]    # (B,) -> (B, 1)
+
+        X = X * p_1 + rand_X * p_2
+        y = y * p_1 + rand_y * p_2
+
+        return X, y
 
 
 if __name__ == "__main__":
@@ -360,11 +424,13 @@ if __name__ == "__main__":
 
     data_root = Path(os.environ["kaggle_data_root"]).joinpath("hms-harmful-brain-activity-classification", "test")
     cfg = Eeg1dGRUConfig()
-    eeg1dgru_dataset = Eeg1dGRUDataset(data_root=data_root, mode="train")
+    meta_df = pd.read_csv(data_root.joinpath("train.csv"))
+    eegs_dir = data_root.joinpath("raw_eeg")
+    eeg1dgru_dataset = Eeg1dGRUDataset(meta_df=meta_df, eegs_dir=eegs_dir, mode="train")
 
     dataloader = DataLoader(eeg1dgru_dataset, batch_size=16, num_workers=1, pin_memory=True, drop_last=True)
 
-    X, y = next(iter(dataloader))
+    X, y, _ = next(iter(dataloader))
 
     out = model(X)
 

@@ -25,6 +25,7 @@ class ConfigBase():
 @dataclasses.dataclass
 class Eeg1dGRUConfig(ConfigBase):
     model_framework: str = "resnet_1d_gru"
+    target_columns = TARGETS
     num_classes: int = len(TARGETS)
     fixed_kernel_size: int = 5
     in_channels: int = len(RAW_EEG_CHANNEL_LIST)
@@ -35,6 +36,7 @@ class Eeg1dGRUConfig(ConfigBase):
     num_worker: int = 2
     max_epoch: int = 5
     accumulate_grad_batches: int = 2 ** 0
+    mixup_rate: float = 0.2
     learning_rate: float = 1e-4
     weight_decay: float = 0.5
     warmup_steps_ratio: float = 0.1
