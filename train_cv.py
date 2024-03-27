@@ -16,13 +16,15 @@ if __name__ == '__main__':
     eegs_dir = data_root.joinpath("raw_eeg")
     spectrograms_dir = data_root.joinpath("spectrogram")
     meta_df = pd.read_csv(data_root.joinpath("train.csv"))
-    output_dir = root.joinpath("outputs", "runner", "eeg1dgru_mixup", "20240324")
+    output_dir = root.joinpath("outputs", "runner", "convtrans_mixup", "20240327")
 
     config = Eeg1dGRUConfig(
-        model_framework="resnet_1d_gru",
-        batch_size=2**4,
+        model_framework="resnet_1d_convtrans",
+        batch_size=2**5,
         num_worker=os.cpu_count()//2,
-        max_epoch=20
+        max_epoch=20,
+        learning_rate=1e-3,
+        mixup_rate=0.5
     )
 
     model = Eeg1dGRUModel(config)

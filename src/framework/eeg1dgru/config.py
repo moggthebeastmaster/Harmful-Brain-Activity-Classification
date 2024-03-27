@@ -38,10 +38,11 @@ class Eeg1dGRUConfig(ConfigBase):
     num_worker: int = 2
     max_epoch: int = 5
     accumulate_grad_batches: int = 2 ** 0
-    mixup_rate: float = 0.2
+    mixup_rate: float = 0.1
     learning_rate: float = 1e-4
     weight_decay: float = 0.5
     warmup_steps_ratio: float = 0.1
+    drop_out: float = 0.2
     early_stop: bool = False
 
 if __name__ == "__main__":

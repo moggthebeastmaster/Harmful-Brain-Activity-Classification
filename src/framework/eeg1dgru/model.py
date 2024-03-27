@@ -7,6 +7,7 @@ import pandas as pd
 import tqdm
 import shutil
 import numpy as np
+import math
 from pathlib import Path
 
 import torch
@@ -24,11 +25,11 @@ from src.kaggle_score import kaggle_score
 
 class ResNet_1D_Block(nn.Module):
 
-    def __init__(self, in_channels, out_channels, kernel_size, stride, padding, downsampling):
+    def __init__(self, in_channels, out_channels, kernel_size, stride, padding, downsampling, drop_out: float = 0.):
         super(ResNet_1D_Block, self).__init__()
         self.bn1 = nn.BatchNorm1d(num_features=in_channels)
         self.relu = nn.ReLU(inplace=False)
-        self.dropout = nn.Dropout(p=0.0, inplace=False)
+        self.dropout = nn.Dropout(p=drop_out, inplace=False)
         self.conv1 = nn.Conv1d(in_channels=in_channels, out_channels=out_channels, kernel_size=kernel_size,
                                stride=stride, padding=padding, bias=False)
         self.bn2 = nn.BatchNorm1d(num_features=out_channels)
@@ -66,6 +67,7 @@ class ResNet1dEncoder(nn.Module):
         self.parallel_conv = nn.ModuleList()
         self.in_channels = cfg.in_channels
         out_features = cfg.resnet_out_features
+        self.drop_out = cfg.drop_out
 
         fixed_kernel_size = cfg.fixed_kernel_size
 
@@ -83,6 +85,7 @@ class ResNet1dEncoder(nn.Module):
         self.bn2 = nn.BatchNorm1d(num_features=self.planes)
         self.avgpool = nn.AvgPool1d(kernel_size=6, stride=6, padding=2)
         self.linear = nn.Linear(in_features=168, out_features=out_features)
+        self.last_dropout = nn.Dropout(p=self.drop_out)
 
 
     def _make_resnet_layer(self, kernel_size, stride, blocks=9, padding=0):
@@ -95,7 +98,7 @@ class ResNet1dEncoder(nn.Module):
                     nn.MaxPool1d(kernel_size=2, stride=2, padding=0)
                 )
             layers.append(ResNet_1D_Block(in_channels=self.planes, out_channels=self.planes, kernel_size=kernel_size,
-                                       stride=stride, padding=padding, downsampling=downsampling))
+                                       stride=stride, padding=padding, downsampling=downsampling, drop_out=self.drop_out))
 
         return nn.Sequential(*layers)
 
@@ -128,7 +131,73 @@ class ResNet1dEncoder(nn.Module):
         
         out = out.reshape(out.shape[0], -1)
         out = self.linear(out)
+        out = self.last_dropout(out)
         return out
+
+
+class PositionalEncoding(nn.Module):
+
+    def __init__(self, d_model: int, dropout: float = 0.1, max_len: int = 5000):
+        super().__init__()
+        self.dropout = nn.Dropout(p=dropout)
+
+        position = torch.arange(max_len).unsqueeze(1)
+        div_term = torch.exp(torch.arange(0, d_model, 2) * (-math.log(10000.0) / d_model))
+        pe = torch.zeros(max_len, 1, d_model)
+        pe[:, 0, 0::2] = torch.sin(position * div_term)
+        pe[:, 0, 1::2] = torch.cos(position * div_term)
+        self.register_buffer('pe', pe)
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        """
+        Arguments:
+            x: Tensor, shape ``[seq_len, batch_size, embedding_dim]``
+        """
+        x = x + self.pe[:x.size(0)]
+        return self.dropout(x)
+
+
+class ConvTransEncoder(nn.Module):
+    def __init__(self, cfg: Eeg1dGRUConfig):
+        super().__init__()
+        self.cfg = cfg
+        self.kernels = cfg.kernels
+        self.in_channels = cfg.in_channels
+        self.planes = cfg.planes
+        d_model = 128
+
+        self.parallel_conv = nn.ModuleList()
+        # kernel size ごとの 1dconv
+        for i, kernel_size in enumerate(list(self.kernels)):
+            sep_conv = nn.Conv1d(in_channels=self.in_channels, out_channels=self.planes, kernel_size=(kernel_size),
+                               stride=1, padding="same", bias=False,)
+            self.parallel_conv.append(sep_conv)
+        self.conv1 = nn.Conv1d(in_channels=self.planes*len(self.kernels), out_channels=d_model, kernel_size=self.kernels[-1], stride=self.kernels[-1], padding=0, bias=False)
+
+        encoder_layer = nn.TransformerEncoderLayer(d_model=d_model, nhead=8, batch_first=True)
+        self.transformer_encoder = nn.TransformerEncoder(encoder_layer=encoder_layer, num_layers=6)
+        self.pos_encoder = PositionalEncoding(d_model=d_model)
+        self.rnn = nn.GRU(input_size=d_model, hidden_size=128, num_layers=2, bidirectional=True)
+        
+
+    def forward(self, x: torch.Tensor):
+        x = x.permute(0, 2, 1)  # (B, L, C) -> (B, C, L)
+
+        out_sep = []
+
+        for i in range(len(self.kernels)):
+            sep = self.parallel_conv[i](x)
+            out_sep.append(sep)
+
+        out = torch.cat(out_sep, dim=1) # [(B, C, L), ...] -> (B, plane*#kernels, L)
+        out = self.conv1(out)
+        out = out.permute(0, 2, 1)  # (B, plane*#kernels, L) -> (B, L, plane*#kernels)
+        out = self.pos_encoder(out)
+        out = self.transformer_encoder(out)
+
+        rnn_out, _ = self.rnn(out)
+        rnn_h = rnn_out[:, -1, :]
+        return rnn_h
 
 
 class GRUEncoder(nn.Module):
@@ -169,6 +238,29 @@ class EegNet(nn.Module):
 
         return result
     
+class EegTransNet(nn.Module):
+
+    def __init__(self, cfg: Eeg1dGRUConfig):
+        super(EegTransNet, self).__init__()
+        self.cfg = cfg
+        
+        num_classes = self.cfg.num_classes
+        self.res_encoder = ResNet1dEncoder(cfg=cfg)
+        self.gru_encoder = ConvTransEncoder(cfg=cfg)
+
+        in_features = cfg.resnet_out_features + cfg.gru_out_features*2
+        self.fc = nn.Linear(in_features=in_features, out_features=num_classes)
+        
+
+    def forward(self, x):
+        res_out = self.res_encoder(x)
+        gru_out = self.gru_encoder(x)
+
+        out = torch.cat([res_out, gru_out], dim=1)
+        result = self.fc(out)  
+
+        return result
+
 
 class EegDataModule(LightningDataModule):
     def __init__(self, train_dataset: Dataset, val_dataset: Dataset, config: Eeg1dGRUConfig):
@@ -325,12 +417,15 @@ class EegLightningModel(LightningModule):
         
         if config.model_framework == "resnet_1d_gru":
             self.eeg_classifier = EegNet(config)
+        elif config.model_framework == "resnet_1d_convtrans":
+            self.eeg_classifier = EegTransNet(config)
         else:
             raise ValueError()
         
         self.kl_div_loss = nn.KLDivLoss(reduction="batchmean")
 
         self.save_hyperparameters(dataclasses.asdict(self.config))
+
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         logits = self.eeg_classifier(x)
@@ -420,7 +515,7 @@ if __name__ == "__main__":
     from torch.utils.data import DataLoader
 
     cfg = Eeg1dGRUConfig()
-    model = EegNet(cfg)
+    model = ConvTransEncoder(cfg)
 
     data_root = Path(os.environ["kaggle_data_root"]).joinpath("hms-harmful-brain-activity-classification", "test")
     cfg = Eeg1dGRUConfig()
