@@ -68,6 +68,14 @@ class SubmissionRunner:
             model = SpectrogramsModel(config=config)
             model.load(trained_dir / "model.pt")
 
+        elif model_framework in ["eeg_efficientnet_b0_v2"]:
+            from src.framework.spectrograms_nn.model import SpectrogramsModel, EfficientNetConfig
+
+            # config 設定
+            config = EfficientNetConfig(**config_dict)
+            model = SpectrogramsModel(config=config)
+            model.load(trained_dir / "model.pt")
+
         elif model_framework in ['ResnetGRU']:
             from src.framework.eeg_nn.model import EEGNeuralNetModel
             from src.framework.eeg_nn.config import EEGResnetGRUConfig

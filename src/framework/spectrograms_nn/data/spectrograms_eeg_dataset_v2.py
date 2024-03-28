@@ -160,9 +160,11 @@ class SpectrogramsEEGDatasetV2(torch.utils.data.Dataset):
             x2 = arr["arr_1"]
             x3 = arr["arr_2"]
             y = arr["arr_3"]
-        else:
+        elif self.temp_save_dir is not None:
             x1, x2, x3, y = self.draw(index)
             np.savez((self.temp_save_dir / f"{index}"), x1, x2,x3, y)
+        else:
+            x1, x2, x3, y = self.draw(index)
         return x1,x2,x3,y
 
     def clear(self):
