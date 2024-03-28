@@ -7,7 +7,7 @@ import torch
 import tqdm
 import torchaudio
 import pyarrow.parquet as pq
-
+import shutil
 root = Path(__file__).parents[4]
 sys.path.append(str(root))
 from src.framework.spectrograms_nn.config.efficient_net_config import EfficientNetConfig
@@ -34,7 +34,9 @@ CHAIN_FEATURES = [['Fp1', 'F7', 'T3', 'T5', 'O1'],
 
 class SpectrogramsDataset(torch.utils.data.Dataset):
     def __init__(self, meta_df: pd.DataFrame, spectrograms_dir: Path, config: EfficientNetConfig, with_label=False,
-                 train_mode=False):
+                 train_mode=False,
+                 temp_save_dir: Path | None = None,
+                 ):
         self.meta_df = meta_df
         self.spectrograms_dir = spectrograms_dir
         self.config = config
@@ -64,6 +66,12 @@ class SpectrogramsDataset(torch.utils.data.Dataset):
             y = self.meta_df[TARGETS_COLUMNS].values
             self.meta_label_prob = y / y.sum(axis=1, keepdims=True)
 
+        if temp_save_dir is not None:
+            self.temp_save_dir = temp_save_dir / "npz_file"
+            self.temp_save_dir.mkdir(exist_ok=True,parents=True)
+        else:
+            self.temp_save_dir = None
+
     def __len__(self):
         return len(self.meta_eeg_id)
 
@@ -88,6 +96,9 @@ class SpectrogramsDataset(torch.utils.data.Dataset):
 
         return x, y, eeg_id, self.meta_eeg_label_offset_seconds[index]
 
+    def clear(self):
+        if (self.temp_save_dir is not None) and (self.temp_save_dir.exists()):
+            shutil.rmtree(self.temp_save_dir.parent)
     def draw(self, index):
         spectrogram_id = self.meta_spectrogram_id[index]
         spectrogram_path = self.spectrograms_dir.joinpath(f"{spectrogram_id}.parquet")

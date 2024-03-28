@@ -25,7 +25,6 @@ FREQUENCY = 1 / 2
 EEG_ONE_DATA_TIME = 50
 EEG_FREQUENCY = 200
 
-
 COLUMN_NAMES_ALL = ['Fp1', 'F3', 'C3', 'P3', 'F7', 'T3', 'T5', 'O1', 'Fz', 'Cz', 'Pz', 'Fp2', 'F4', 'C4', 'P4', 'F8',
                     'T4',
                     'T6', 'O2', 'EKG']
@@ -61,8 +60,13 @@ def mel_spec_func(x):
     return rev
 
 
-class SpectrogramsEEGDataset(torch.utils.data.Dataset):
-    def __init__(self, meta_df: pd.DataFrame, eegs_dir:Path, spectrograms_dir: Path, config: EfficientNetConfig, with_label=False,
+class SpectrogramsEEGDatasetV2(torch.utils.data.Dataset):
+    def __init__(self,
+                 meta_df: pd.DataFrame,
+                 eegs_dir: Path,
+                 spectrograms_dir: Path,
+                 config: EfficientNetConfig,
+                 with_label=False,
                  train_mode=False,
                  temp_save_dir: Path | None = None,
                  ):
@@ -111,18 +115,18 @@ class SpectrogramsEEGDataset(torch.utils.data.Dataset):
         return len(self.meta_eeg_id)
 
     def __getitem__(self, index) -> tuple[np.ndarray, np.ndarray, int, float]:
-        eeg_id = self.meta_eeg_id[index]
+
         # draw
-        x1, x2, x3, y = self.draw(index)
+        x1, x2, x3, y = self.draw_or_load(index)
 
         if self.train_mode:
             if self.config.mix_up_alpha > 0.:
-                x1_, x2_, x3_, y_ = self.draw(torch.randint(0, len(self), size=(1, ))[0])
+                x1_, x2_, x3_, y_ = self.draw_or_load(torch.randint(0, len(self), size=(1,))[0])
                 l = self.beta.sample().numpy()
-                x1 = l * x1 + (1-l) * x1_
-                x2 = l * x2 + (1-l) * x2_
-                x3 = l * x3 + (1-l) * x3_
-                y = l * y + (1-l) * y_
+                x1 = l * x1 + (1 - l) * x1_
+                x2 = l * x2 + (1 - l) * x2_
+                x3 = l * x3 + (1 - l) * x3_
+                y = l * y + (1 - l) * y_
 
             x1 = self.masking1(torch.from_numpy(x1))
             x1 = self.masking2(x1).numpy()
@@ -136,28 +140,35 @@ class SpectrogramsEEGDataset(torch.utils.data.Dataset):
         x2 = np.asarray(Image.fromarray(x2).resize((s, s)))
         x3 = np.asarray(Image.fromarray(x3[:, 22:-22]).resize((s, s)))
 
-
-
-
         if False:
             import matplotlib.pyplot as plt
             x_show = np.concatenate([x1, x2, x3], axis=0)
-            plt.imshow((((x_show.T - x_show.min()) / (x_show.max() - x_show.min())) * 255).astype(np.uint8), cmap='viridis', aspect='auto',
+            plt.imshow((((x_show.T - x_show.min()) / (x_show.max() - x_show.min())) * 255).astype(np.uint8),
+                       cmap='viridis', aspect='auto',
                        origin='lower')
             plt.show()
 
-
-
         x = np.stack([x1, x2, x3], axis=0)
+        eeg_id = self.meta_eeg_id[index]
 
         return x, y, eeg_id, self.meta_eeg_label_offset_seconds[index]
+
+    def draw_or_load(self, index):
+        if (self.temp_save_dir is not None) and (self.temp_save_dir / f"{index}.npz").exists():
+            arr = np.load((self.temp_save_dir / f"{index}.npz"))
+            x1 = arr["arr_0"]
+            x2 = arr["arr_1"]
+            x3 = arr["arr_2"]
+            y = arr["arr_3"]
+        else:
+            x1, x2, x3, y = self.draw(index)
+            np.savez((self.temp_save_dir / f"{index}"), x1, x2,x3, y)
+        return x1,x2,x3,y
 
     def clear(self):
         if (self.temp_save_dir is not None) and (self.temp_save_dir.exists()):
             shutil.rmtree(self.temp_save_dir.parent)
-
     def draw(self, index):
-
         ## kaggle spectrogram
         spectrogram_id = self.meta_spectrogram_id[index]
         spectrogram_path = self.spectrograms_dir.joinpath(f"{spectrogram_id}.parquet")
@@ -189,7 +200,8 @@ class SpectrogramsEEGDataset(torch.utils.data.Dataset):
 
         if False:
             import matplotlib.pyplot as plt
-            z = (x_kaggle_spectrograms - x_kaggle_spectrograms.min()) / (x_kaggle_spectrograms.max() - x_kaggle_spectrograms.min())
+            z = (x_kaggle_spectrograms - x_kaggle_spectrograms.min()) / (
+                        x_kaggle_spectrograms.max() - x_kaggle_spectrograms.min())
             plt.imshow(z.T)
             plt.show()
 
@@ -213,21 +225,19 @@ class SpectrogramsEEGDataset(torch.utils.data.Dataset):
         # 対象データの切り出し
         x = x[target_start_point:target_end_point]
 
-
         mean_values = np.nanmean(x, axis=0)
         nan_indices = np.isnan(x)
         x[nan_indices] = np.take(mean_values, nan_indices.nonzero()[1])
 
         # フィルター
         x = self.bandpass_filter(x)
-        """
         # MEL_SPECTROGRAM をとる
-        x_chain = np.zeros(shape=(128, 257, len(COLUMN_NAMES)))
+        x_chain_mel = np.zeros(shape=(128, 257, len(COLUMN_NAMES)))
         for k, name in enumerate(COLUMN_NAMES):
             for inner_k in range(len(CHAIN_FEATURES[k]) - 1):
-                x_chain[..., k] += mel_spec_func(x[:, COLUMN_NAMES_ALL_INV[CHAIN_FEATURES[k][inner_k]]] \
-                                 - x[:, COLUMN_NAMES_ALL_INV[CHAIN_FEATURES[k][inner_k+1]]])
-        x_chain = x_chain/4
+                x_chain_mel[..., k] += mel_spec_func(x[:, COLUMN_NAMES_ALL_INV[CHAIN_FEATURES[k][inner_k]]] \
+                                                     - x[:, COLUMN_NAMES_ALL_INV[CHAIN_FEATURES[k][inner_k + 1]]])
+        x_chain_mel = x_chain_mel / 4
         """
         # MEL_SPECTROGRAM をとる
         x_chain = np.zeros(shape=(len(COLUMN_NAMES), 10000))
@@ -237,36 +247,35 @@ class SpectrogramsEEGDataset(torch.utils.data.Dataset):
                                  - x[:, COLUMN_NAMES_ALL_INV[CHAIN_FEATURES[k][inner_k+1]]]
         x_chain_mel = mel_spec_func(x_chain/4)
         x_chain_mel = np.transpose(x_chain_mel, (1,2,0))
+        """
 
         mean_values = np.nanmean(x_chain_mel, axis=0)
         nan_indices = np.isnan(x_chain_mel)
         x_chain_mel[nan_indices] = np.take(mean_values, nan_indices.nonzero()[1])
 
         x_eeg_spectrograms = x_chain_mel.copy()
-        x_eeg_spectrograms = self.normalize(x_eeg_spectrograms, axis=(0,1))
+        x_eeg_spectrograms = self.normalize(x_eeg_spectrograms, axis=(0, 1))
         x_eeg_spectrograms = np.concatenate([x_eeg_spectrograms[..., i] for i in range(4)], axis=0)
         x_eeg_spectrograms = x_eeg_spectrograms.T
 
-        """
         # STFT をとる
         x_chain_stft = np.zeros(shape=(128, 257, len(COLUMN_NAMES)))
         for k, name in enumerate(COLUMN_NAMES):
             for inner_k in range(len(CHAIN_FEATURES[k]) - 1):
                 x_chain_stft[..., k] += stft(x[:, COLUMN_NAMES_ALL_INV[CHAIN_FEATURES[k][inner_k]]] \
-                                 - x[:, COLUMN_NAMES_ALL_INV[CHAIN_FEATURES[k][inner_k+1]]])
-        x_chain_stft = x_chain_stft/4
+                                             - x[:, COLUMN_NAMES_ALL_INV[CHAIN_FEATURES[k][inner_k + 1]]])[:257].T
+        x_chain_stft = x_chain_stft / 4
         """
         x_chain_stft = stft(x_chain/4)
         x_chain_stft = np.transpose(x_chain_stft, (1,2,0))
-
-
+        """
 
         mean_values = np.nanmean(x_chain_stft, axis=0)
         nan_indices = np.isnan(x_chain_stft)
         x_chain_stft[nan_indices] = np.take(mean_values, nan_indices.nonzero()[1])
 
         x_eeg_spectrograms_stft = np.clip(x_chain_stft.copy(), np.exp(-6), np.exp(10))
-        x_eeg_spectrograms_stft = self.normalize(x_eeg_spectrograms_stft, axis=(0,1))
+        x_eeg_spectrograms_stft = self.normalize(x_eeg_spectrograms_stft, axis=(0, 1))
         x_eeg_spectrograms_stft = np.concatenate([x_eeg_spectrograms_stft[..., i] for i in range(4)], axis=0)
         x_eeg_spectrograms_stft = x_eeg_spectrograms_stft.T
 
@@ -279,7 +288,7 @@ class SpectrogramsEEGDataset(torch.utils.data.Dataset):
         # ラベル情報
         y = self.meta_label_prob[index] if self.with_label else np.zeros(shape=(len(TARGETS, )), dtype=float)
 
-        return x_eeg_spectrograms,x_eeg_spectrograms_stft, x_kaggle_spectrograms, y
+        return x_eeg_spectrograms, x_eeg_spectrograms_stft, x_kaggle_spectrograms, y
 
     @staticmethod
     def normalize(eeg_array: np.array, eps=1e-5, axis=(0, 1)):
@@ -293,6 +302,7 @@ class SpectrogramsEEGDataset(torch.utils.data.Dataset):
 
 def _butter_bandpass(lowcut, highcut, fs, order=5):
     return butter(order, [lowcut, highcut], fs=fs, btype="band")
+
 
 class ButterBandpassFilter:
     def __init__(self, lowcut, highcut, fs, order=5):
@@ -315,7 +325,7 @@ class ButterBandpassFilter:
 def main():
     train = True
 
-    config = EfficientNetConfig(data_use_second=600, mix_up_alpha=0., time_mask_range=0, frequency_mask_range=0)
+    config = EfficientNetConfig(data_use_second=600, mix_up_alpha=0.1, time_mask_range=0, frequency_mask_range=0)
     if train:
         eegs_dir = root.joinpath("data/hms-harmful-brain-activity-classification/train_eegs")
         spectrograms_dir = root.joinpath("data/hms-harmful-brain-activity-classification/train_spectrograms")
@@ -325,12 +335,15 @@ def main():
         spectrograms_dir = root.joinpath("data/hms-harmful-brain-activity-classification/test_spectrograms")
         meta_df = pd.read_csv(root.joinpath("data/hms-harmful-brain-activity-classification/test.csv"))
 
-    dataset = SpectrogramsEEGDataset(meta_df, eegs_dir, spectrograms_dir, config, with_label=train, train_mode=train)
+    temp_save_dir = root.joinpath("outputs", "temp")
+
+    dataset = SpectrogramsEEGDatasetV2(meta_df, eegs_dir, spectrograms_dir, config, with_label=train, train_mode=train,
+                                       temp_save_dir=temp_save_dir)
 
     for data_one in tqdm.tqdm(dataset):
         pass
         # print(data_one)
-
+    dataset.clear()
 
 
 
@@ -339,7 +352,7 @@ if __name__ == '__main__':
     import atexit
 
     profile = line_profiler.LineProfiler()
-    profile.add_module(SpectrogramsEEGDataset)
+    profile.add_module(SpectrogramsEEGDatasetV2)
     # profile.runcall(main)
     main()
 

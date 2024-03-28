@@ -22,6 +22,7 @@ from src.framework.spectrograms_nn.config.efficient_net_config import EfficientN
 from src.framework.spectrograms_nn.classifier.efficient_net import EfficientNet
 from src.framework.spectrograms_nn.data.spectrograms_dataset import SpectrogramsDataset
 from src.framework.spectrograms_nn.data.spectrograms_eeg_dataset import SpectrogramsEEGDataset
+from src.framework.spectrograms_nn.data.spectrograms_eeg_dataset_v2 import SpectrogramsEEGDatasetV2
 from src.kaggle_score import kaggle_score
 
 
@@ -67,6 +68,8 @@ class SpectrogramsModel():
             self.dataset = SpectrogramsDataset
         elif self.config.model_framework in ["eeg_efficientnet_b0", "eeg_efficientnet_b7"]:
             self.dataset = SpectrogramsEEGDataset
+        elif self.config.model_framework in ["eeg_efficientnet_b0_v2"]:
+            self.dataset = SpectrogramsEEGDatasetV2
         else:
             raise NotImplementedError
 
@@ -84,13 +87,17 @@ class SpectrogramsModel():
                                      spectrograms_dir=spectrograms_dir,
                                      config=self.config,
                                      with_label=True,
-                                     train_mode=True)
+                                     train_mode=True,
+                                     temp_save_dir=output_dir / "train_temp",
+                                     )
         val_dataset = self.dataset(meta_df=val_df,
                                    eegs_dir=eegs_dir,
                                    spectrograms_dir=spectrograms_dir,
                                    config=self.config,
                                    with_label=True,
-                                   train_mode=False)
+                                   train_mode=False,
+                                   temp_save_dir=output_dir / "val_temp",
+                                   )
         data_module = SpectrogramsDataModule(train_dataset=train_dataset, val_dataset=val_dataset, config=self.config)
 
         callbacks = [TQDMProgressBar()]
@@ -143,6 +150,10 @@ class SpectrogramsModel():
         predicts_df.to_csv(output_dir.joinpath("predicts.csv"))
         shutil.copyfile(Path(self.model.trainer.log_dir) / "hparams.yaml", output_dir / "hparams.yaml")
 
+        # 一時ファイルを削除
+        train_dataset.clear()
+        val_dataset.clear()
+
         return {"kaggle_score": score}
 
     def predict(self, test_df: pd.DataFrame, eegs_dir: Path, spectrograms_dir: Path) -> pd.DataFrame:
@@ -192,8 +203,13 @@ class _LightningModel(LightningModule):
         super().__init__()
 
         self.config = config
-        if self.config.model_framework in ["efficientnet_b0", "eeg_efficientnet_b0", "efficientnet_b7",
-                                           "eeg_efficientnet_b7", ]:
+        if self.config.model_framework in ["efficientnet_b0",
+                                           "eeg_efficientnet_b0",
+                                           "eeg_efficientnet_b0_v2",
+                                           "efficientnet_b7",
+                                           "eeg_efficientnet_b7",
+                                           "eeg_efficientnet_b7_v2",
+                                           ]:
             self.egg_classifier = EfficientNet(self.config, pretrain=pretrain)
         else:
             raise NotImplementedError

@@ -2,31 +2,31 @@ import os
 from pathlib import Path
 import pandas as pd
 
-from src.runner import Runner,RunnerConfig
+from src.runner import Runner, RunnerConfig
 
 if __name__ == '__main__':
     root = Path(__file__).parents[0]
 
     # モデルを用意
-    from src.framework.eeg1dgru.model import Eeg1dGRUModel
-    from src.framework.eeg1dgru.config import Eeg1dGRUConfig
+    from src.framework.spectrograms_nn.model import SpectrogramsModel, EfficientNetConfig
 
-    data_root = Path(os.environ["kaggle_data_root"]).joinpath("hms-harmful-brain-activity-classification/test")
-    eegs_dir = data_root.joinpath("raw_eeg")
-    spectrograms_dir = data_root.joinpath("spectrogram")
-    meta_df = pd.read_csv(data_root.joinpath("train.csv"))
-    output_dir = root.joinpath("outputs", "runner", "convtrans_mixup", "20240327")
+    eegs_dir = root.joinpath("data/hms-harmful-brain-activity-classification/train_eegs")
+    spectrograms_dir = root.joinpath("data/hms-harmful-brain-activity-classification/train_spectrograms")
+    meta_df = pd.read_csv(root.joinpath("data/hms-harmful-brain-activity-classification/train.csv"))
+    output_dir = root.joinpath("outputs", "runner", "spectrograms_nn", "eeg_efficientnet_b0_v2", "20240328")
 
-    config = Eeg1dGRUConfig(
-        model_framework="resnet_1d_convtrans",
-        batch_size=2**5,
-        num_worker=os.cpu_count()//2,
-        max_epoch=20,
-        learning_rate=1e-3,
-        mixup_rate=0.5
+    # 時間短縮用に真ん中の波形のみ使用
+    meta_df = meta_df.groupby('eeg_id').agg(lambda s: s.iloc[len(s) // 2]).reset_index(drop=False)
+
+    config = EfficientNetConfig(
+        model_framework="eeg_efficientnet_b0_v2",
+        batch_size=2 ** 4,
+        num_worker=os.cpu_count(),
+        max_epoch=10,
+        early_stop=False,
     )
 
-    model = Eeg1dGRUModel(config)
+    model = SpectrogramsModel(config)
 
     # runner を実行
     runner_config = RunnerConfig()
