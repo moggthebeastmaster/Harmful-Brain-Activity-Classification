@@ -29,7 +29,9 @@ class InterfaceModel:
               eegs_dir: Path,
               spectrograms_dir: Path,
               output_dir: Path,
-              early_stop:bool) -> dict:
+              early_stop:bool,
+              remove_temp_dir:bool,
+              ) -> dict:
         score_dict = {"kaggle_score": 0.0}
         return score_dict
 
@@ -84,6 +86,8 @@ class Runner():
 
         return score_dict
 
-    def run_train(self, train_df: pd.DataFrame, val_df: pd.DataFrame | None, eegs_dir: Path, spectrograms_dir: Path):
-        return self.model.train(train_df, val_df, eegs_dir, spectrograms_dir, output_dir=self.output_dir)
+    def run_train(self, train_df: pd.DataFrame, val_df: pd.DataFrame | None, eegs_dir: Path, spectrograms_dir: Path,
+                  remove_temp_dir:bool=True):
+        return self.model.train(train_df, val_df, eegs_dir, spectrograms_dir, output_dir=self.output_dir,
+                                remove_temp_dir=remove_temp_dir)
 

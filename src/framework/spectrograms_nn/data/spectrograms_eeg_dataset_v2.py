@@ -154,15 +154,16 @@ class SpectrogramsEEGDatasetV2(torch.utils.data.Dataset):
         return x, y, eeg_id, self.meta_eeg_label_offset_seconds[index]
 
     def draw_or_load(self, index):
-        if (self.temp_save_dir is not None) and (self.temp_save_dir / f"{index}.npz").exists():
-            arr = np.load((self.temp_save_dir / f"{index}.npz"))
+        file_name = str(self.meta_eeg_id[index]) + "-" + str(int(self.meta_eeg_label_offset_seconds[index]))
+        if (self.temp_save_dir is not None) and (self.temp_save_dir / f"{file_name}.npz").exists():
+            arr = np.load((self.temp_save_dir / f"{file_name}.npz"))
             x1 = arr["arr_0"]
             x2 = arr["arr_1"]
             x3 = arr["arr_2"]
             y = arr["arr_3"]
         elif self.temp_save_dir is not None:
             x1, x2, x3, y = self.draw(index)
-            np.savez((self.temp_save_dir / f"{index}"), x1, x2,x3, y)
+            np.savez((self.temp_save_dir / f"{file_name}"), x1, x2,x3, y)
         else:
             x1, x2, x3, y = self.draw(index)
         return x1,x2,x3,y
@@ -240,16 +241,6 @@ class SpectrogramsEEGDatasetV2(torch.utils.data.Dataset):
                 x_chain_mel[..., k] += mel_spec_func(x[:, COLUMN_NAMES_ALL_INV[CHAIN_FEATURES[k][inner_k]]] \
                                                      - x[:, COLUMN_NAMES_ALL_INV[CHAIN_FEATURES[k][inner_k + 1]]])
         x_chain_mel = x_chain_mel / 4
-        """
-        # MEL_SPECTROGRAM をとる
-        x_chain = np.zeros(shape=(len(COLUMN_NAMES), 10000))
-        for k, name in enumerate(COLUMN_NAMES):
-            for inner_k in range(len(CHAIN_FEATURES[k]) - 1):
-                x_chain[k] += x[:, COLUMN_NAMES_ALL_INV[CHAIN_FEATURES[k][inner_k]]] \
-                                 - x[:, COLUMN_NAMES_ALL_INV[CHAIN_FEATURES[k][inner_k+1]]]
-        x_chain_mel = mel_spec_func(x_chain/4)
-        x_chain_mel = np.transpose(x_chain_mel, (1,2,0))
-        """
 
         mean_values = np.nanmean(x_chain_mel, axis=0)
         nan_indices = np.isnan(x_chain_mel)
@@ -267,10 +258,6 @@ class SpectrogramsEEGDatasetV2(torch.utils.data.Dataset):
                 x_chain_stft[..., k] += stft(x[:, COLUMN_NAMES_ALL_INV[CHAIN_FEATURES[k][inner_k]]] \
                                              - x[:, COLUMN_NAMES_ALL_INV[CHAIN_FEATURES[k][inner_k + 1]]])[:257].T
         x_chain_stft = x_chain_stft / 4
-        """
-        x_chain_stft = stft(x_chain/4)
-        x_chain_stft = np.transpose(x_chain_stft, (1,2,0))
-        """
 
         mean_values = np.nanmean(x_chain_stft, axis=0)
         nan_indices = np.isnan(x_chain_stft)

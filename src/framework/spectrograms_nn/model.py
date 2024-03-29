@@ -68,7 +68,7 @@ class SpectrogramsModel():
             self.dataset = SpectrogramsDataset
         elif self.config.model_framework in ["eeg_efficientnet_b0", "eeg_efficientnet_b7"]:
             self.dataset = SpectrogramsEEGDataset
-        elif self.config.model_framework in ["eeg_efficientnet_b0_v2"]:
+        elif self.config.model_framework in ["eeg_efficientnet_b0_v2", "eeg_efficientnet_b7_v2"]:
             self.dataset = SpectrogramsEEGDatasetV2
         else:
             raise NotImplementedError
@@ -77,8 +77,14 @@ class SpectrogramsModel():
         self.model = _LightningModel(config=self.config, pretrain=pretrain)
         self.model.to(self.device)
 
-    def train(self, train_df: pd.DataFrame, val_df: pd.DataFrame, eegs_dir: Path, spectrograms_dir: Path,
-              output_dir: Path) -> dict:
+    def train(self,
+              train_df: pd.DataFrame,
+              val_df: pd.DataFrame,
+              eegs_dir: Path,
+              spectrograms_dir: Path,
+              output_dir: Path,
+              remove_temp_dir: bool = True,
+              ) -> dict:
 
         self.initialize_model(pretrain=True)
 
@@ -88,7 +94,7 @@ class SpectrogramsModel():
                                      config=self.config,
                                      with_label=True,
                                      train_mode=True,
-                                     temp_save_dir=output_dir / "train_temp",
+                                     temp_save_dir=output_dir / "temp",
                                      )
         val_dataset = self.dataset(meta_df=val_df,
                                    eegs_dir=eegs_dir,
@@ -96,7 +102,7 @@ class SpectrogramsModel():
                                    config=self.config,
                                    with_label=True,
                                    train_mode=False,
-                                   temp_save_dir=output_dir / "val_temp",
+                                   temp_save_dir=output_dir / "temp",
                                    )
         data_module = SpectrogramsDataModule(train_dataset=train_dataset, val_dataset=val_dataset, config=self.config)
 
@@ -151,8 +157,9 @@ class SpectrogramsModel():
         shutil.copyfile(Path(self.model.trainer.log_dir) / "hparams.yaml", output_dir / "hparams.yaml")
 
         # 一時ファイルを削除
-        train_dataset.clear()
-        val_dataset.clear()
+        if remove_temp_dir:
+            train_dataset.clear()
+            val_dataset.clear()
 
         return {"kaggle_score": score}
 
