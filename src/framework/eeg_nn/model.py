@@ -70,9 +70,11 @@ class EEGNeuralNetModel():
         self.model = None
         self.initialize_model()
 
+
     def initialize_model(self):
         self.model = LightningModel(config=self.config, device=self.device)
         self.model.to(self.device)
+
 
     def train(self, train_df: pd.DataFrame, val_df: pd.DataFrame, eegs_dir: Path, spectrograms_dir: Path,
               output_dir: Path) -> dict:
@@ -109,7 +111,67 @@ class EEGNeuralNetModel():
         labels_list = []
         val_dataloader = data_module.val_dataloader()
         for batch in tqdm.tqdm(val_dataloader, desc="predict val dataset"):
-            input_data, labels, eeg_id, offset_num = batch
+            input_data, labels, eeg_id, offset_num, votes = batch
+            with torch.no_grad():
+                predicts_logit = self.model(input_data.to(self.device))
+                predict_y.append(torch.softmax(predicts_logit, dim=1).cpu().detach().numpy())
+                eeg_id_list.append(eeg_id.cpu().detach().numpy())
+                labels_list.append(labels.cpu().detach().numpy())
+        predict_y = np.concatenate(predict_y, axis=0)
+        eeg_ids = np.concatenate(eeg_id_list)[:, np.newaxis]
+        label = np.concatenate(labels_list)
+
+        label_df = pd.DataFrame(np.concatenate([eeg_ids, label], axis=1), columns=["eeg_id"] + self.target_columns)
+        predicts_df = pd.DataFrame(np.concatenate([eeg_ids, predict_y], axis=1), columns=["eeg_id"] + self.target_columns)
+        score = kaggle_score(label_df.copy(), predicts_df.copy(), "eeg_id")
+        score_df = pd.DataFrame([score], index=["kaggle_score"])
+
+        # 保存処理
+        output_dir.mkdir(exist_ok=True, parents=True)
+        self.save(output_dir.joinpath("model.pt"))
+        score_df.to_csv(output_dir.joinpath("score.csv"))
+        label_df.to_csv(output_dir.joinpath("label.csv"))
+        predicts_df.to_csv(output_dir.joinpath("predicts.csv"))
+        shutil.copyfile(Path(self.model.trainer.log_dir) / "hparams.yaml", output_dir / "hparams.yaml")
+
+        return {"kaggle_score": score}
+    
+
+    def train_2nd(self, train_df: pd.DataFrame, val_df: pd.DataFrame, eegs_dir: Path, spectrograms_dir: Path,
+              output_dir: Path) -> dict:
+        self.model.phase = "2nd"
+        self.model.train()
+        train_dataset = self.dataset_class(meta_df=train_df, eegs_dir=eegs_dir, config=self.config, with_label=True,
+                                   train_mode=True)
+        val_dataset = self.dataset_class(meta_df=val_df, eegs_dir=eegs_dir, config=self.config, with_label=True,
+                                 train_mode=False)
+        data_module = EEGDataModule(train_dataset=train_dataset, val_dataset=val_dataset, config=self.config)
+
+        callbacks = [TQDMProgressBar()]
+        if self.config.early_stop:
+            early_stop_callback = EarlyStopping(monitor="val_score", min_delta=0.01, patience=1, verbose=False,
+                                                mode="min")
+            callbacks.append(early_stop_callback)
+
+        trainer = Trainer(max_epochs=self.config.max_epoch,
+                          callbacks=callbacks,
+                          logger=CSVLogger(save_dir=str(output_dir)),
+                          # log_every_n_steps=1,
+                          precision="16-mixed",
+                          check_val_every_n_epoch=1,
+                          accumulate_grad_batches=self.config.accumulate_grad_batches,
+                          enable_checkpointing=False,
+                          )
+
+        trainer.fit(self.model, datamodule=data_module)
+        self.model.eval()
+        self.model.to(self.device)
+        predict_y = []
+        eeg_id_list = []
+        labels_list = []
+        val_dataloader = data_module.val_dataloader()
+        for batch in tqdm.tqdm(val_dataloader, desc="predict val dataset"):
+            input_data, labels, eeg_id, offset_num, votes = batch
             with torch.no_grad():
                 predicts_logit = self.model(input_data.to(self.device))
                 predict_y.append(torch.softmax(predicts_logit, dim=1).cpu().detach().numpy())
@@ -134,6 +196,7 @@ class EEGNeuralNetModel():
 
         return {"kaggle_score": score}
 
+
     def predict(self, test_df: pd.DataFrame, eegs_dir: Path, spectrograms_dir: Path) -> pd.DataFrame:
         test_dataset = self.dataset_class(meta_df=test_df, eegs_dir=eegs_dir, config=self.config, with_label=False,
                                   train_mode=False)
@@ -152,7 +215,10 @@ class EEGNeuralNetModel():
         predict_y = []
         eeg_id_list = []
         for batch in tqdm.tqdm(test_dataloader, desc="predict val dataset"):
-            input_data, labels, eeg_id, offset_num = batch
+            if len(batch) == 5:
+                input_data, labels, eeg_id, offset_num, votes = batch
+            else: 
+                input_data, labels, eeg_id, offset_num = batch
             with torch.no_grad():
                 predicts_logit = self.model(input_data.to(self.device).to(float_type))
                 predict_y.append(torch.softmax(predicts_logit, dim=1).cpu().detach().numpy())
@@ -173,11 +239,12 @@ class EEGNeuralNetModel():
 
 
 class LightningModel(LightningModule):
-    def __init__(self, config: EEGNeuralNetConfig, device):
+    def __init__(self, config: EEGNeuralNetConfig, device, phase: str="1st"):
         super().__init__()
 
-
         self.config = config
+        self.phase = phase
+        self.model_vote = 1
         if self.config.model_framework == "ResnetGRU":
             from src.framework.eeg_nn.data.eeg_resnetgru_dataset import TARGETS_COLUMNS, COLUMN_NAMES
             self.egg_classifier = ResnetGRU(drop_out=self.config.drop_out)
@@ -206,9 +273,33 @@ class LightningModel(LightningModule):
         kl_loss = self.kl_loss_function(predicts_logit, label)
         return kl_loss
 
+    
     def training_step(self, batch, batch_idx):
-        input_data, labels, _, _ = batch
+        if self.phase == "1st":
+            loss = self.training_step_1st(batch, batch_idx)
+        else:
+            loss = self.training_step_2nd(batch, batch_idx)
+        
+        return loss
+
+
+    def training_step_1st(self, batch, batch_idx):
+        input_data, labels, _, _, votes = batch
         predicts_logit = self(input_data)
+        loss = self._loss_func(predicts_logit, labels)
+        loss = loss.mean()
+        self.log("train_loss", loss, prog_bar=True, logger=True, on_step=False, on_epoch=True)
+        self.log("learning_rate", self.lr_schedulers().get_last_lr()[0], prog_bar=False, logger=True, on_step=False,
+                 on_epoch=True)
+        return {"loss": loss}
+    
+    def training_step_2nd(self, batch, batch_idx):
+        input_data, labels, _, _, votes = batch
+        predicts_logit = self(input_data)
+
+        # pseudo label
+        labels = (labels*votes[:, None] + torch.nn.functional.softmax(predicts_logit, dim=1)*self.model_vote)/(votes[:, None] + self.model_vote)
+
         loss = self._loss_func(predicts_logit, labels)
         loss = loss.mean()
         self.log("train_loss", loss, prog_bar=True, logger=True, on_step=False, on_epoch=True)
@@ -217,7 +308,7 @@ class LightningModel(LightningModule):
         return {"loss": loss}
 
     def validation_step(self, batch, batch_idx, dataloader_idx=0):
-        input_data, labels, eeg_id, offset_num = batch
+        input_data, labels, eeg_id, offset_num, votes = batch
         with torch.no_grad():
             predicts_logit = self(input_data)
 
@@ -268,7 +359,8 @@ class KLDivLossWithLogits(torch.nn.KLDivLoss):
     """
 
     def __init__(self, device, weight_sample=None):
-        if weight_sample is None:
+        self.weight_sample = weight_sample
+        if self.weight_sample is None:
             super().__init__(reduction='batchmean')
         else:
             self.weight_sample = torch.Tensor(weight_sample).to(device)

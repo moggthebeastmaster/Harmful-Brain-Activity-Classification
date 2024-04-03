@@ -63,7 +63,7 @@ class EEGResnetGRUDataset(torch.utils.data.Dataset):
         self.meta_patient_id = self.meta_df.patient_id.values
 
         self.bandpass_filter = ButterBandpassFilter(lowcut=0.5, highcut=20, fs=FREQUENCY, order=2)
-        self.lowpass_filter = ButterLowpassFilter(order=2)
+        self.lowpass_filter = ButterLowpassFilter(order=5)
 
         self.mix_up_alpha = self.config.mix_up_alpha
 
@@ -73,6 +73,7 @@ class EEGResnetGRUDataset(torch.utils.data.Dataset):
             self.meta_label = self.meta_df.expert_consensus
             y = self.meta_df[TARGETS_COLUMNS].values
             self.meta_label_prob = y / y.sum(axis=1, keepdims=True)
+            self.y_sum = y.sum(axis=1)
 
     def __len__(self):
         return len(self.meta_eeg_id)
@@ -80,14 +81,14 @@ class EEGResnetGRUDataset(torch.utils.data.Dataset):
     def __getitem__(self, index):
         eeg_id = self.meta_eeg_id[index]
         # draw
-        x, y = self.draw(index)
+        x, y, y_sum = self.draw(index)
         # x = self.normalize(x)
         if self.train_mode:
             if (self.mix_up_alpha > 0.):
 
                 random_index = torch.randint(0, len(self.meta_eeg_id), (1,)).detach().numpy()[0]
                 l = np.random.beta(self.mix_up_alpha, self.mix_up_alpha, 1)[0]  # FIX: 出来ればtorch random で実装したい
-                x_mix, y_mix = self.draw(random_index)
+                x_mix, y_mix, _ = self.draw(random_index)
                 # x_mix= self.normalize(x_mix)
 
                 x = l * x + (1 - l) * x_mix
@@ -113,7 +114,7 @@ class EEGResnetGRUDataset(torch.utils.data.Dataset):
         # cast
         x = x.astype(np.float32)
 
-        return x, y, eeg_id, self.meta_eeg_label_offset_seconds[index]
+        return x, y, eeg_id, self.meta_eeg_label_offset_seconds[index], y_sum
 
     def draw(self, index):
         eeg_id = self.meta_eeg_id[index]
@@ -151,8 +152,9 @@ class EEGResnetGRUDataset(torch.utils.data.Dataset):
 
         # ラベル情報
         y = self.meta_label_prob[index] if self.with_label else np.zeros(shape=(len(TARGETS, )), dtype=float)
+        y_sum = self.y_sum[index] if self.with_label else 0
 
-        return x, y
+        return x, y, y_sum
 
 
 
@@ -190,11 +192,27 @@ class ButterLowpassFilter:
     def __init__(self, cutoff_freq=20, sampling_rate=FREQUENCY, order=4):
         nyquist = 0.5 * sampling_rate
         normal_cutoff = cutoff_freq / nyquist
+        # self.cutoff_freqs = np.array([1, 5, 10, 20]) / nyquist
+        # self.b_list = []
+        # self.a_list = []
+        # for cutoff in self.cutoff_freqs:
+        #     b, a = butter(order, cutoff, btype="low", analog=False)
+        #     self.b_list.append(b)
+        #     self.a_list.append(a)
         b, a = butter(order, normal_cutoff, btype="low", analog=False)
         self.b = b
         self.a = a
 
+        
+
     def __call__(self, data):
+        # filtered_data = np.zeros((data.shape[0], data.shape[1]*len(self.cutoff_freqs)))
+
+        # for i, (b, a) in enumerate(zip(self.b_list, self.a_list)):
+        #     if i == 0:
+        #         filtered_data[:, i*data.shape[1]:(i+1)*data.shape[1]] = lfilter(b, a, data, axis=0)
+        #     else:
+        #         filtered_data[:, i*data.shape[1]:(i+1)*data.shape[1]] = lfilter(b, a, data, axis=0) - filtered_data[:, (i-1)*data.shape[1]:(i)*data.shape[1]]
         filtered_data = lfilter(self.b, self.a, data, axis=0)
 
         if False:

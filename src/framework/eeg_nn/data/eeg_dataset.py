@@ -63,6 +63,7 @@ class EEGDataset(torch.utils.data.Dataset):
             self.meta_label = self.meta_df.expert_consensus
             y = self.meta_df[TARGETS_COLUMNS].values
             self.meta_label_prob = y / y.sum(axis=1, keepdims=True)
+            self.y_sum = y.sum(axis=1, keepdims=True)
 
     def __len__(self):
         return len(self.meta_eeg_id)
@@ -70,14 +71,14 @@ class EEGDataset(torch.utils.data.Dataset):
     def __getitem__(self, index):
         eeg_id = self.meta_eeg_id[index]
         # draw
-        x, y = self.draw(index)
+        x, y, y_sum = self.draw(index)
 
         if (self.mix_up_alpha > 0.) and self.train_mode:
             # x = self.normalize(x)
 
             random_index = torch.randint(0, len(self.meta_eeg_id), (1,)).detach().numpy()[0]
             l = np.random.beta(self.mix_up_alpha, self.mix_up_alpha, 1)[0]  # FIX: 出来ればtorch random で実装したい
-            x_mix, y_mix = self.draw(random_index)
+            x_mix, y_mix, _ = self.draw(random_index)
             #  = self.normalize(x_mix)
 
             x = l * x + (1 - l) * x_mix
@@ -90,7 +91,7 @@ class EEGDataset(torch.utils.data.Dataset):
         # cast
         x = x.astype(np.float32)
 
-        return x, y, eeg_id, self.meta_eeg_label_offset_seconds[index]
+        return x, y, eeg_id, self.meta_eeg_label_offset_seconds[index], y_sum
 
     def draw(self, index):
         eeg_id = self.meta_eeg_id[index]
@@ -125,8 +126,9 @@ class EEGDataset(torch.utils.data.Dataset):
 
         # ラベル情報
         y = self.meta_label_prob[index] if self.with_label else np.zeros(shape=(len(TARGETS, )), dtype=float)
+        y_sum = self.y_sum[index] if self.with_label else 0
 
-        return x, y
+        return x, y, y_sum
 
 
 

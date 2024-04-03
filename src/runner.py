@@ -4,6 +4,7 @@ import pandas as pd
 from sklearn.model_selection import GroupShuffleSplit
 from dataclasses import dataclass
 
+TARGETS_COLUMNS = ['seizure_vote', 'lpd_vote', 'gpd_vote', 'lrda_vote', 'grda_vote', 'other_vote']
 
 @dataclass
 class RunnerConfig:
@@ -24,6 +25,18 @@ class InterfaceModel:
         pass
 
     def train(self,
+              train_df: pd.DataFrame,
+              val_df: pd.DataFrame,
+              eegs_dir: Path,
+              spectrograms_dir: Path,
+              output_dir: Path,
+              early_stop:bool,
+              remove_temp_dir:bool,
+              ) -> dict:
+        score_dict = {"kaggle_score": 0.0}
+        return score_dict
+    
+    def train_2nd(self,
               train_df: pd.DataFrame,
               val_df: pd.DataFrame,
               eegs_dir: Path,
@@ -90,4 +103,38 @@ class Runner():
                   remove_temp_dir:bool=True):
         return self.model.train(train_df, val_df, eegs_dir, spectrograms_dir, output_dir=self.output_dir,
                                 remove_temp_dir=remove_temp_dir)
+    
+    def run_2_stage_cv(self, meta_df: pd.DataFrame, eegs_dir: Path, spectrograms_dir: Path, over_vote: int=10):
+        # 5-fold 分け
+        gkf = GroupShuffleSplit(n_splits=self.runner_config.fold_num, random_state=self.runner_config.data_split_seed)
+        score_dict = {"kaggle_score":0}
 
+        for fold, (train_indexs, val_indexs) in enumerate(
+                gkf.split(meta_df, None, meta_df.patient_id)):
+
+            # 1st stage
+            self.model.initialize_model()
+            train_df = meta_df.loc[train_indexs]
+            train_df_1st = train_df.loc[train_df[TARGETS_COLUMNS].sum(axis=1)>=over_vote]
+            val_df = meta_df.loc[val_indexs]
+            val_df_1st = val_df.loc[val_df[TARGETS_COLUMNS].sum(axis=1)>=over_vote]
+            score_dict_inner = self.model.train(train_df_1st, val_df_1st, eegs_dir, spectrograms_dir,
+                                                output_dir=self.output_dir.joinpath(f"fold_{fold}"),
+                                                )
+
+            # 2nd stage
+            self.model.load(self.output_dir.joinpath(f"fold_{fold}", "model.pt"))
+            score_dict_inner = self.model.train_2nd(train_df, val_df, eegs_dir, spectrograms_dir,
+                                                output_dir=self.output_dir.joinpath(f"fold_{fold}"),
+                                                )
+            
+            print(score_dict_inner)
+            score_dict["kaggle_score"] += score_dict_inner["kaggle_score"] / self.runner_config.fold_num
+            score_dict[f"kaggle_score_fold{fold}"] = score_dict_inner["kaggle_score"]
+
+
+
+        score_df = pd.DataFrame(score_dict, index=["index"])
+        score_df.to_csv(self.output_dir.joinpath("kaggle_score.csv"))
+
+        return score_dict
